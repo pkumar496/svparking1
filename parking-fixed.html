@@ -1,0 +1,2034 @@
+<!DOCTYPE html>
+<html lang="te">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>శ్రీ వెంకటేశ్వర పార్కింగ్</title>
+    
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+
+    <style>
+        :root { --bg-color: #f4f6f8; --text-main: #111827; --panel-bg: #ffffff; --open-color: #10b981; --occupied-color: #ef4444; --accent-color: #3b82f6; --whatsapp-color: #25D366; --shift-color: #8b5cf6; --admin-color: #f59e0b; --modal-overlay: rgba(0, 0, 0, 0.7); }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, sans-serif; background-color: var(--bg-color); color: var(--text-main); margin: 0; padding: 15px; display: flex; flex-direction: column; align-items: center; }
+        
+        /* ==========================================
+           🖨️ DUAL PRINTING STYLES (THERMAL VS A4)
+           ========================================== */
+        #print-receipt-section, #print-report-section { display: none; }
+
+        @media print {
+            body { background: white; margin: 0; padding: 0; display: block; }
+            .no-print { display: none !important; } 
+            
+            /* Thermal Receipt Styles */
+            body.print-mode-receipt #print-receipt-section { 
+                display: block !important; width: 58mm; font-family: monospace; font-size: 12px; color: black; text-align: left; margin: 0 auto; 
+            }
+            .receipt-header { text-align: center; font-weight: bold; font-size: 14px; margin-bottom: 5px; }
+            .receipt-subheader { text-align: center; font-size: 10px; margin-bottom: 10px; font-weight: bold;}
+            .receipt-line { border-bottom: 1px dashed black; margin: 5px 0; }
+            .receipt-row { display: flex; justify-content: space-between; margin: 2px 0; }
+            .receipt-footer { text-align: center; margin-top: 10px; font-size: 10px; }
+
+            /* A4 Corporate Report Styles */
+            body.print-mode-report #print-report-section {
+                display: block !important; width: 100%; max-width: 210mm; font-family: 'Segoe UI', Arial, sans-serif; color: black; margin: 0 auto; padding: 20px; box-sizing: border-box;
+            }
+            .a4-header { text-align: center; border-bottom: 2px solid black; padding-bottom: 15px; margin-bottom: 20px; }
+            .a4-header h1 { margin: 0 0 5px 0; font-size: 24px; text-transform: uppercase; letter-spacing: 2px; }
+            .a4-header p { margin: 0; font-size: 12px; color: #555; }
+            .a4-summary-box { border: 1px solid #ccc; padding: 15px; border-radius: 8px; margin-bottom: 25px; background: #f9fafb; }
+            .a4-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #eee; font-size: 16px;}
+            .a4-row:last-child { border-bottom: none; font-size: 20px; font-weight: bold; margin-top: 10px; border-top: 2px solid black; padding-top: 15px;}
+            .a4-table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 12px; }
+            .a4-table th, .a4-table td { border: 1px solid #ccc; padding: 8px; text-align: left; }
+            .a4-table th { background-color: #eee; font-weight: bold; }
+        }
+
+        /* ==========================================
+           💻 DASHBOARD & UI STYLES
+           ========================================== */
+        .container { width: 100%; max-width: 1400px; display: flex; flex-direction: column; gap: 20px; }
+        .top-controls { display: flex; justify-content: space-between; align-items: center; background: var(--panel-bg); padding: 15px 20px; border-radius: 12px; border: 2px solid #e2e8f0; }
+        .operator-badge { font-size: 16px; font-weight: bold; display: flex; align-items: center; gap: 10px; }
+        .control-btns { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center;}
+        
+        .btn-top { background-color: var(--panel-bg); border: 2px solid #e2e8f0; padding: 10px 15px; border-radius: 6px; font-weight: bold; cursor: pointer; transition: 0.2s; white-space: nowrap; }
+        .btn-top:hover { background-color: #e2e8f0; }
+        .btn-shift { background-color: var(--shift-color); color: white; border: none; }
+        .btn-admin { background-color: var(--admin-color); color: white; border: none; }
+        .admin-only { display: none; } 
+        .tester-only { display: none; }
+
+        .live-admin-dashboard { display: none; background: linear-gradient(135deg, #1e293b, #0f172a); color: white; border-radius: 12px; padding: 20px; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1); width: 100%; box-sizing: border-box; }
+        .dashboard-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-top: 15px; }
+        .dash-card { background: rgba(255, 255, 255, 0.1); padding: 15px; border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.2); }
+        .dash-card h4 { margin: 0 0 10px 0; font-size: 13px; text-transform: uppercase; color: #94a3b8; letter-spacing: 1px; }
+        .dash-val { font-size: 28px; font-weight: bold; margin: 0; }
+        .dash-sub { font-size: 12px; color: #cbd5e1; margin-top: 5px; display: flex; justify-content: space-between;}
+        
+        .active-users-list { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
+        .user-chip { background: var(--open-color); color: white; padding: 5px 10px; border-radius: 20px; font-size: 12px; font-weight: bold; display: flex; align-items: center; gap: 5px; }
+        .user-chip .time { font-weight: normal; font-size: 10px; opacity: 0.9; }
+
+        .stats-container { display: flex; gap: 15px; width: 100%; flex-wrap: wrap;}
+        .stat-box { flex: 1; min-width: 140px; background-color: var(--panel-bg); padding: 20px; border-radius: 12px; text-align: center; border: 2px solid #e2e8f0; }
+        .stat-box h2 { margin: 0 0 5px 0; font-size: 15px; color: #64748b; text-transform: uppercase; }
+        .stat-box .number { font-size: 36px; font-weight: bold; }
+        .text-open { color: var(--open-color); }
+        .text-occupied { color: var(--occupied-color); }
+
+        .parking-map { background-color: var(--panel-bg); padding: 20px; border-radius: 12px; border: 2px solid #e2e8f0; overflow-x: auto;}
+        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(60px, 1fr)); gap: 6px; min-width: 100%; }
+        .spot { height: 50px; display: flex; flex-direction: column; justify-content: center; align-items: center; border-radius: 4px; font-size: 14px; font-weight: bold; cursor: pointer; border: 2px solid transparent; transition: transform 0.1s; position: relative;}
+        .spot:active { transform: scale(0.95); }
+        .spot.open { background-color: #d1fae5; color: var(--open-color); border-color: #a7f3d0; }
+        .spot.occupied { background-color: #fee2e2; color: var(--occupied-color); border-color: #fecaca; }
+        .spot.disabled { opacity: 0.5; cursor: not-allowed; pointer-events: none; }
+        .vehicle-icon { font-size: 14px; margin-top: 2px;}
+
+        #cloud-loader { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(255,255,255,0.95); z-index: 9999; display: flex; flex-direction: column; justify-content: center; align-items: center; font-size: 24px; font-weight: bold; color: var(--accent-color); }
+        
+        .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: var(--modal-overlay); justify-content: center; align-items: center; z-index: 1000; padding: 15px; box-sizing: border-box;}
+        .modal-box { background: white; padding: 20px; border-radius: 8px; width: 100%; max-width: 450px; box-shadow: 0 10px 25px rgba(0,0,0,0.2); max-height: 90vh; overflow-y: auto; box-sizing: border-box;}
+        .modal-box.large { max-width: 800px; }
+        .form-group { margin-bottom: 15px; width: 100%; }
+        .form-group label { display: block; font-size: 14px; font-weight: bold; margin-bottom: 5px; }
+        .form-group input, .form-group select { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; font-size: 16px; }
+        
+        .btn { width: 100%; padding: 12px; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; color: white; margin-top: 10px; box-sizing: border-box; font-size: 15px; }
+        .btn-green { background-color: var(--open-color); }
+        .btn-whatsapp { background-color: var(--whatsapp-color); color: white; }
+        .btn-red { background-color: var(--occupied-color); }
+        .btn-blue { background-color: var(--accent-color); }
+        .btn-gray { background-color: #64748b; margin-top: 10px;}
+        .btn-danger { background-color: #ef4444; margin-top: 20px;}
+        .btn-outline { background-color: transparent; border: 2px solid #ccc; color: #333; margin-top: 5px; }
+        .btn-outline:hover { background-color: #f1f5f9; }
+
+        .live-stats { background: #f8fafc; padding: 15px; border-radius: 6px; margin-bottom: 15px; border: 1px solid #e2e8f0; }
+        .live-stats .big-fee { font-size: 24px; font-weight: bold; color: var(--occupied-color); margin-top: 5px; display: block;}
+        .report-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #eee; font-size: 14px;}
+        
+        .admin-section { border: 1px solid #e2e8f0; padding: 15px; border-radius: 6px; margin-bottom: 20px; overflow-x: hidden; }
+        .admin-section h3 { margin-top: 0; color: var(--admin-color); font-size: 16px; border-bottom: 1px solid #eee; padding-bottom: 5px;}
+        
+        .user-list { max-height: 150px; overflow-y: auto; border: 1px solid #ccc; padding: 5px; border-radius: 4px; margin-bottom: 10px;}
+        .user-item { display: flex; justify-content: space-between; align-items: center; padding: 8px 5px; border-bottom: 1px solid #eee; font-size: 14px;}
+        .user-item button { background: var(--occupied-color); color: white; border: none; border-radius: 3px; cursor: pointer; padding: 4px 10px;}
+
+        .customer-table { width: 100%; border-collapse: collapse; font-size: 13px; text-align: left; }
+        .customer-table th { background: #f1f5f9; padding: 10px; border-bottom: 2px solid #cbd5e1; }
+        .customer-table td { padding: 10px; border-bottom: 1px solid #e2e8f0; }
+        .customer-search { width: 100%; padding: 10px; margin-bottom: 15px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; font-size: 16px; }
+
+        #toast-container { position: fixed; bottom: 20px; right: 20px; left: 20px; z-index: 2000; display: flex; flex-direction: column; gap: 10px; align-items: center; pointer-events: none;}
+        .toast { background: #1f2937; color: white; padding: 15px 20px; border-radius: 6px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); font-size: 14px; opacity: 0; transform: translateY(20px); transition: all 0.3s ease; border-left: 5px solid var(--open-color); max-width: 90%; text-align: center; line-height: 1.4; pointer-events: auto;}
+        .toast.show { opacity: 1; transform: translateY(0); }
+
+        /* ==============================================
+           📱 MOBILE RESPONSIVENESS FIXES
+           ============================================== */
+        @media (max-width: 768px) {
+            body { padding: 10px; }
+            .top-controls { flex-direction: column; align-items: stretch; gap: 15px; text-align: center; }
+            .control-btns { justify-content: stretch; flex-direction: column; width: 100%; gap: 5px; }
+            .btn-top { width: 100%; margin: 0; }
+            .stats-container { flex-direction: row; flex-wrap: wrap; gap: 10px; }
+            .stat-box { flex: 1 1 45%; min-width: 120px; padding: 15px 10px; }
+            .stat-box .number { font-size: 28px; }
+            .parking-map { padding: 10px; }
+            .grid { min-width: 100%; grid-template-columns: repeat(auto-fill, minmax(50px, 1fr)); gap: 5px; }
+            .spot { height: 45px; font-size: 13px; }
+            .vehicle-icon { font-size: 12px; }
+            
+            /* Modal & Dashboard Resizing Fixes */
+            .modal-overlay { padding: 10px; align-items: flex-start; padding-top: 3vh; }
+            .modal-box { width: 100%; margin: 0; padding: 15px; max-height: 90vh; overflow-y: auto; overflow-x: hidden; }
+            .admin-section { padding: 10px; }
+            .dashboard-grid { grid-template-columns: 1fr; }
+            
+            /* Reports Panel Mobile Fixes */
+            .date-inputs { flex-direction: column; gap: 5px !important; }
+            .date-inputs .form-group { width: 100%; min-width: 100% !important; margin-bottom: 5px; }
+            .report-row { flex-direction: column; text-align: left; gap: 4px; padding: 12px 0; }
+            .report-row strong { align-self: flex-start; font-size: 16px; }
+            .live-stats { padding: 10px; }
+            .btn { font-size: 14px; padding: 10px; }
+            .btn-outline { font-size: 12px; padding: 8px; }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="cloud-loader">
+        <div style="font-size: 40px; margin-bottom: 10px;">☁️</div>
+        డేటాబేస్‌కు కనెక్ట్ అవుతోంది...
+    </div>
+
+    <div id="print-receipt-section">
+        <div class="receipt-header">Sri Venkateswara Parking</div>
+        <div class="receipt-subheader" id="receipt-type">Tax Invoice</div>
+        <div class="receipt-line"></div>
+        <div id="receipt-body"></div>
+        <div class="receipt-line"></div>
+        <div class="receipt-footer">Thank you for parking with us!</div>
+    </div>
+
+    <div id="print-report-section">
+        <div class="a4-header">
+            <h1>ఆదాయ నివేదిక</h1>
+            <p id="a4-generation-details">ప్రింట్ చేసిన సమయం: --</p>
+        </div>
+        
+        <h3 style="margin-bottom: 10px;">ఆర్థిక సారాంశం (<span id="a4-period-dates">--</span>)</h3>
+        <div class="a4-summary-box">
+            <div class="a4-row"><span>పార్క్ చేసిన వాహనాలు:</span> <strong id="a4-handled">0</strong></div>
+            <div class="a4-row"><span>నగదు (Cash):</span> <span>₹<span id="a4-cash">0.00</span></span></div>
+            <div class="a4-row"><span>ఆన్‌లైన్ (UPI):</span> <span>₹<span id="a4-online">0.00</span></span></div>
+            <div class="a4-row" style="color:var(--shift-color);"><span>పాస్ ద్వారా వాడినది:</span> <span>₹<span id="a4-pass">0.00</span></span></div>
+            <div class="a4-row"><span>మొత్తం (నగదు + ఆన్‌లైన్):</span> <strong>₹<span id="a4-total">0.00</span></strong></div>
+        </div>
+
+        <h3 style="margin-bottom: 10px;">రోజువారీ & 12 గంటల షిఫ్ట్ బ్రేకప్</h3>
+        <table class="a4-table">
+            <thead>
+                <tr>
+                    <th>తేదీ (Date)</th>
+                    <th>సమయం (12-Hr Shift)</th>
+                    <th>వాహనాలు</th>
+                    <th>నగదు (₹)</th>
+                    <th>ఆన్‌లైన్ (₹)</th>
+                </tr>
+            </thead>
+            <tbody id="a4-ledger-body">
+                </tbody>
+        </table>
+        <p style="text-align: center; font-size: 10px; color: gray; margin-top: 30px;">-- నివేదిక ముగింపు --</p>
+    </div>
+
+    <div class="container no-print">
+        
+        <div class="tester-only" style="background: #fef08a; padding: 15px; text-align: center; border: 2px dashed #eab308; border-radius: 8px;">
+            <h3 style="margin-top:0; color:#ca8a04;">🛠️ సాండ్‌బాక్స్ టెస్టింగ్ మోడ్ (సూపర్ అడ్మిన్)</h3>
+            <p style="font-size:12px; margin-bottom:10px; color:#854d0e;">టెస్ట్ మోడ్ యాక్టివ్‌గా ఉంది. ఇక్కడ చేసే మార్పులు డేటాబేస్‌లో సేవ్ అవుతాయి.</p>
+            <button class="btn btn-outline" style="width:auto; margin:5px; background:white;" onclick="simulateTime(1)">+1 గంట</button>
+            <button class="btn btn-outline" style="width:auto; margin:5px; background:white;" onclick="simulateTime(12)">+12 గంటలు</button>
+            <button class="btn btn-outline" style="width:auto; margin:5px; background:white;" onclick="simulateTime(24)">+24 గంటలు</button>
+        </div>
+
+        <h1 style="text-align: center; color: #1f2937; margin: 10px 0 20px 0; font-size: 24px;">
+            🚲 శ్రీ వెంకటేశ్వర పార్కింగ్ <br><span style="font-size: 16px; color:#555;">(సైకిల్స్, బైక్స్, ఆటోలు & కార్లు) 🚗</span>
+        </h1>
+
+        <div class="top-controls">
+            <div class="operator-badge" id="operator-badge">
+                <span style="color:var(--occupied-color)">🔴 సిస్టమ్ లాక్ చేయబడింది. దయచేసి లాగిన్ అవ్వండి.</span>
+            </div>
+            <div class="control-btns">
+                <button class="btn-top btn-shift" id="btn-shift-action" onclick="handleShiftClick()">▶ సెక్యూర్ లాగిన్</button>
+                <button class="btn-top" id="btn-pass-manage" onclick="openPassModal()" style="display:none; background-color:#8b5cf6; color:white; border:none;">💳 పాస్ / కార్డ్</button>
+                <button class="btn-top" id="btn-worker-stats" onclick="showWorkerStats()" style="display:none; background-color:#3b82f6; color:white; border:none;">📊 నా షిఫ్ట్</button>
+                
+                <button class="btn-top btn-admin admin-only" onclick="openAdminSettings()">⚙️ సెట్టింగ్స్</button>
+                <button class="btn-top admin-only" style="background-color: var(--admin-color); color: white; border: none;" onclick="openCustomerDB()">👥 కస్టమర్ డేటాబేస్</button>
+                <button class="btn-top admin-only" onclick="openReport()">📊 రిపోర్ట్స్</button>
+            </div>
+        </div>
+
+        <div class="live-admin-dashboard admin-only" id="main-admin-dashboard">
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.2); padding-bottom: 10px;">
+                <h3 style="margin: 0; font-size: 18px;">🔴 లైవ్ సిస్టమ్ మానిటరింగ్</h3>
+                <span style="font-size: 12px; background: rgba(255,255,255,0.1); padding: 4px 8px; border-radius: 4px;" id="dash-date">--</span>
+            </div>
+            
+            <div style="margin-top: 15px;">
+                <span style="font-size: 12px; color: #cbd5e1;">యాక్టివ్ ఆపరేటర్లు:</span>
+                <div class="active-users-list" id="dash-active-users">
+                    <span style="font-size: 13px; color: #94a3b8;">ఎవరూ లేరు</span>
+                </div>
+            </div>
+
+            <div class="dashboard-grid">
+                <div class="dash-card">
+                    <h4>వాహనాల లెక్కలు (ఈరోజు)</h4>
+                    <div style="display:flex; justify-content: space-between; align-items: flex-end;">
+                        <div>
+                            <p class="dash-val" style="color: var(--open-color);" id="dash-total-entered">0</p>
+                            <span style="font-size: 11px; color:#94a3b8;">మొత్తం వచ్చాయి</span>
+                        </div>
+                        <div style="text-align: right;">
+                            <p class="dash-val" style="color: var(--whatsapp-color); font-size: 20px;" id="dash-total-left">0</p>
+                            <span style="font-size: 11px; color:#94a3b8;">మొత్తం వెళ్లాయి</span>
+                        </div>
+                    </div>
+                    <div class="dash-sub">
+                        <span>ప్రస్తుతం పార్కింగ్‌లో ఉన్నాయి:</span>
+                        <strong style="color: white; font-size: 14px;" id="dash-in-lot">0</strong>
+                    </div>
+                </div>
+
+                <div class="dash-card">
+                    <h4>ఆదాయం (ఈరోజు సబ్‌టోటల్స్)</h4>
+                    <div class="dash-sub" style="margin-top: 0; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 5px; margin-bottom: 5px;">
+                        <span>నగదు (Cash):</span>
+                        <strong style="color: var(--occupied-color);" id="dash-cash">₹0.00</strong>
+                    </div>
+                    <div class="dash-sub" style="margin-top: 0;">
+                        <span>ఆన్‌లైన్ (UPI):</span>
+                        <strong style="color: var(--accent-color);" id="dash-online">₹0.00</strong>
+                    </div>
+                    <div class="dash-sub" style="margin-top: 8px; color: var(--shift-color);">
+                        <span>పాస్ ద్వారా వాడినది:</span>
+                        <strong id="dash-pass">₹0.00</strong>
+                    </div>
+                </div>
+
+                <div class="dash-card" style="background: rgba(16, 185, 129, 0.15); border-color: rgba(16, 185, 129, 0.3);">
+                    <h4 style="color: #a7f3d0;">ఈరోజు మొత్తం కలెక్షన్</h4>
+                    <p class="dash-val" style="color: #34d399; font-size: 34px;" id="dash-grand-total">₹0</p>
+                    <span style="font-size: 11px; color:#94a3b8; display: block; margin-top: 5px;">(నగదు + ఆన్‌లైన్ మాత్రమే)</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="stats-container">
+            <div class="stat-box"><h2>ఖాళీగా ఉన్నవి</h2><div class="number text-open" id="count-open">0</div></div>
+            <div class="stat-box"><h2>నిండినవి</h2><div class="number text-occupied" id="count-occupied">0</div></div>
+        </div>
+
+        <div class="parking-map">
+            <h3 style="text-align: center; margin-top: 0;">రియల్ టైమ్ పార్కింగ్ మ్యాప్</h3>
+            <div class="grid" id="parking-grid"></div>
+        </div>
+    </div>
+    
+    <div class="modal-overlay no-print" id="login-modal">
+        <div class="modal-box">
+            <h2>లాగిన్ అవ్వండి</h2>
+            <div class="form-group"><label>యూజర్ నేమ్</label><input type="text" id="login-user" autocomplete="off"></div>
+            <div class="form-group"><label>పాస్‌వర్డ్</label><input type="password" id="login-pass"></div>
+            <button class="btn btn-shift" onclick="attemptLogin()">లాగిన్</button>
+            <button class="btn btn-gray" onclick="closeModals()">రద్దు చేయి</button>
+        </div>
+    </div>
+
+    <div class="modal-overlay no-print" id="pass-modal">
+        <div class="modal-box">
+            <h2 style="color: var(--shift-color)">💳 పాస్ / కార్డ్ మేనేజ్‌మెంట్</h2>
+            
+            <div class="form-group">
+                <label>ఫోన్ నంబర్</label>
+                <div style="display:flex; gap:10px;">
+                    <input type="tel" id="pass-search-id" placeholder="10 అంకెల నంబర్ ఎంటర్ చేయండి" maxlength="15" style="flex:1;">
+                    <button class="btn btn-blue" style="margin-top:0; width:auto; padding: 10px 15px;" onclick="searchPass()">వెతుకు</button>
+                </div>
+            </div>
+
+            <div id="pass-details" style="display:none; background:#f8fafc; padding:15px; border-radius:6px; border:1px solid #e2e8f0; margin-bottom:15px;">
+                <p style="margin:5px 0;"><strong>పేరు:</strong> <span id="pass-display-name">--</span></p>
+                <p style="margin:5px 0;"><strong>వాడిన మొత్తం:</strong> ₹<span id="pass-display-used">0.00</span></p>
+                <p style="margin:5px 0; font-size:18px;"><strong>బ్యాలెన్స్:</strong> <strong style="color:var(--open-color);">₹<span id="pass-display-balance">0.00</span></strong></p>
+                
+                <hr style="border:0; border-top:1px solid #ccc; margin:15px 0;">
+                
+                <h4 style="margin-top:0;">బ్యాలెన్స్ యాడ్ చేయండి</h4>
+                <div class="form-group">
+                    <label>అమౌంట్ (₹)</label>
+                    <input type="number" id="pass-recharge-amount" min="0" placeholder="ఉదా: 500">
+                </div>
+                <div class="form-group">
+                    <label>చెల్లింపు విధానం</label>
+                    <select id="pass-recharge-method">
+                        <option value="CASH">నగదు (Cash)</option>
+                        <option value="ONLINE">ఆన్‌లైన్ (UPI)</option>
+                    </select>
+                </div>
+                
+                <div style="display:flex; gap:10px; margin-top:10px;">
+                    <button class="btn btn-green" style="margin-top:0;" onclick="rechargePass()">రీఛార్జ్ చేయి</button>
+                    <button class="btn btn-outline" style="margin-top:0; background:white; padding: 10px;" onclick="printPassReceipt()">🖨️ పాస్ రసీదు</button>
+                </div>
+            </div>
+
+            <div id="pass-register" style="display:none; background:#fff1f2; padding:15px; border-radius:6px; border:1px solid #fecdd3; margin-bottom:15px;">
+                <h4 style="margin-top:0; color:var(--occupied-color);">కార్డ్ లేదు. కొత్తది క్రియేట్ చేయండి.</h4>
+                <div class="form-group">
+                    <label>కస్టమర్ పేరు</label>
+                    <input type="text" id="pass-new-name">
+                </div>
+                <button class="btn btn-red" onclick="registerNewPass()">కొత్త పాస్ క్రియేట్ చేయి</button>
+            </div>
+
+            <button class="btn btn-gray" onclick="closeModals()">మూసివేయి</button>
+        </div>
+    </div>
+
+    <div class="modal-overlay no-print" id="checkin-modal">
+        <div class="modal-box">
+            <h2 id="checkin-title">స్పాట్ నంబర్ #--</h2>
+            
+            <div class="form-group">
+                <label>వ్యక్తి పేరు *</label>
+                <input type="text" id="input-person-name" placeholder="కస్టమర్ పేరు ఎంటర్ చేయండి" onblur="autoSaveToCustomerDB()">
+            </div>
+
+            <div class="form-group">
+                <label>ఫోన్ నంబర్</label>
+                <input type="tel" id="input-phone" placeholder="10 అంకెల నంబర్" maxlength="15" onblur="autoSaveToCustomerDB()">
+            </div>
+
+            <div class="form-group">
+                <label>బండి నంబర్</label>
+                <div style="display:flex; gap:10px;">
+                    <input type="text" id="input-plate" style="flex:1;" placeholder="ప్లేట్ నంబర్" oninput="this.value = this.value.toUpperCase()" onblur="autoSaveToCustomerDB()">
+                    <button class="btn btn-blue" style="margin-top:0; width:auto; padding: 10px;" onclick="document.getElementById('camera-input').click()">📷 స్కాన్</button>
+                </div>
+                <input type="file" id="camera-input" accept="image/*" capture="environment" style="display:none;" onchange="processPlateImage(event)">
+                <div id="ocr-status" style="font-size:12px; font-weight:bold; color:var(--accent-color); margin-top:5px; display:none; text-align:center;">స్కానింగ్ జరుగుతోంది... దయచేసి వేచి ఉండండి ⏳</div>
+            </div>
+
+            <div class="form-group"><label>వాహనం రకం</label>
+                <select id="input-type">
+                    <option value="2">సైకిల్</option>
+                    <option value="3" selected>స్కూటర్/బైక్</option>
+                    <option value="4">ఆటో</option>
+                    <option value="5">కారు</option>
+                </select>
+            </div>
+
+            <div class="form-group" style="background: #f5f3ff; padding: 10px; border-radius: 4px; border: 1px solid #c4b5fd;">
+                <label style="margin-bottom: 0; display: flex; align-items: center; gap: 8px; cursor: pointer; color: var(--shift-color);">
+                    <input type="checkbox" id="input-has-pass" style="width: auto; margin:0;"> 
+                    కస్టమర్‌కి మంత్లీ పాస్ ఉందా?
+                </label>
+            </div>
+            
+            <button class="btn btn-whatsapp" onclick="submitCheckin('whatsapp_print')">చెక్-ఇన్, వాట్సాప్ & ప్రింట్ 💬🖨️</button>
+            <button class="btn btn-blue" onclick="submitCheckin('print_only')">చెక్-ఇన్ & ప్రింట్ 🖨️</button>
+            
+            <button class="btn btn-gray" onclick="closeModals()">రద్దు చేయి</button>
+        </div>
+    </div>
+
+    <div class="modal-overlay no-print" id="checkout-modal">
+        <div class="modal-box">
+            <h2 id="checkout-title">స్పాట్ #-- వివరాలు</h2>
+            
+            <div style="display:flex; gap:10px; margin-bottom: 15px;">
+                <button class="btn btn-outline" style="flex:1; padding: 8px;" onclick="reprintEntryReceipt()">🖨️ ఎంట్రీ రసీదు</button>
+                <button class="btn btn-outline" style="flex:1; padding: 8px;" onclick="printCurrentBill()">🖨️ ప్రస్తుత బిల్లు</button>
+            </div>
+
+            <div class="live-stats">
+                <p><strong>కస్టమర్ పేరు:</strong> <span id="info-person-name" style="color: var(--accent-color); font-weight: bold;"></span></p>
+                <p><strong>ఫోన్ నంబర్:</strong> <span id="info-phone"></span></p>
+                <p><strong>బండి నంబర్:</strong> <span id="info-plate"></span></p>
+                <p><strong>సమయం:</strong> <span id="info-time">0h 0m 0s</span></p>
+                <span class="big-fee" id="info-fee" style="display:none;">₹0.00</span>
+                <span id="info-discount-msg" style="display:none; color: var(--shift-color); font-size: 12px; font-weight: bold; margin-top: 5px;"></span>
+            </div>
+            <div class="form-group">
+                <label>చెల్లింపు విధానం</label>
+                <select id="input-payment-method" onchange="togglePaymentMethod()">
+                    <option value="CASH">నగదు (Cash)</option>
+                    <option value="ONLINE">ఆన్‌లైన్ (UPI)</option>
+                    <option value="PASS">పాస్ బ్యాలెన్స్</option>
+                </select>
+            </div>
+            
+            <div id="upi-display" style="display:none; text-align:center; padding: 10px; background:#eff6ff; border: 1px dashed var(--accent-color); margin-bottom:15px; border-radius: 4px;">
+                <p style="margin:0; font-size:14px;">క్యూఆర్ (QR) స్కాన్ చేయమని లేదా కింది ఐడీకి చెల్లించమని అడగండి:</p>
+                <strong style="font-size:18px; color:var(--accent-color); word-break: break-all;" id="display-upi-id">--</strong>
+            </div>
+
+            <div id="pass-display" style="display:none; text-align:center; padding: 10px; background:#f5f3ff; border: 1px dashed var(--shift-color); margin-bottom:15px; border-radius: 4px;">
+                <p style="margin:0; font-size:14px;">కస్టమర్ కార్డ్ బ్యాలెన్స్:</p>
+                <strong style="font-size:18px; color:var(--shift-color);">₹<span id="display-pass-bal">0.00</span></strong>
+                <p style="margin:5px 0 0 0; font-size:11px; color:#666;">చెక్-అవుట్ నొక్కగానే ఈ బ్యాలెన్స్ కట్ అవుతుంది.</p>
+            </div>
+
+            <div class="form-group" id="cash-input-group" style="background: #fff1f2; padding: 15px; border: 2px solid #fecdd3; border-radius: 6px;">
+                <div style="font-size: 18px; font-weight: bold; color: var(--occupied-color); text-align: center; margin-bottom: 10px; border-bottom: 1px solid #fecdd3; padding-bottom: 10px;">
+                    చెల్లించవలసిన రుసుము: <span id="cash-due-display" style="font-size: 24px;">₹0.00</span>
+                </div>
+                <label style="font-size: 12px; color: #64748b; text-align:center; margin-bottom:5px;">కస్టమర్ ఇచ్చిన నగదు (చిల్లర కోసం - ఆప్షనల్)</label>
+                <input type="number" id="input-cash-received" placeholder="ఖాళీగా వదిలేయవచ్చు" min="0">
+            </div>
+
+            <button class="btn btn-red" onclick="submitCheckout()">చెక్-అవుట్ & ఫైనల్ రసీదు ప్రింట్ చేయి</button>
+            <button class="btn btn-gray" onclick="closeModals()">మూసివేయి</button>
+        </div>
+    </div>
+
+    <div class="modal-overlay no-print" id="end-shift-modal">
+        <div class="modal-box">
+            <h2 style="color: var(--occupied-color);">షిఫ్ట్ ముగింపు</h2>
+            <div class="live-stats">
+                <div class="report-row"><span>ఆపరేటర్:</span> <strong id="shift-name">--</strong></div>
+                <div class="report-row"><span>పంపిన వాహనాలు:</span> <strong id="shift-handled">0</strong></div>
+                <div class="report-row"><span>లోపల మిగిలినవి:</span> <strong id="shift-left" style="color:var(--admin-color)">0</strong></div>
+                <div class="receipt-line" style="border-bottom: 1px solid #ccc; margin: 10px 0;"></div>
+                <div class="report-row"><span>నగదు:</span> <strong>₹<span id="shift-cash">0.00</span></strong></div>
+                <div class="report-row"><span>ఆన్‌లైన్:</span> <strong>₹<span id="shift-online">0.00</span></strong></div>
+                <div class="report-row" style="font-size: 18px; color: var(--open-color); margin-top: 10px;"><span>సబ్-టోటల్:</span> <strong>₹<span id="shift-total">0.00</span></strong></div>
+                <div class="report-row" style="color: var(--shift-color); margin-top: 10px;"><span>పాస్ ద్వారా వాడినది:</span> <strong>₹<span id="shift-pass">0.00</span></strong></div>
+            </div>
+            <button class="btn btn-whatsapp" style="margin-bottom: 5px;" onclick="sendWhatsAppShiftReport()">📱 ఓనర్‌కు వాట్సాప్ రిపోర్ట్ పంపు</button>
+            <button class="btn btn-blue" onclick="printShiftSummary()">🖨️ షిఫ్ట్ రిపోర్ట్ ప్రింట్ చేయి</button>
+            <button class="btn btn-red" onclick="executeSecureLogout(true)">లాగౌట్ & క్లౌడ్‌లో సేవ్ చేయి</button>
+            <button class="btn btn-gray" onclick="closeModals()">వెనక్కి వెళ్ళు</button>
+        </div>
+    </div>
+
+    <div class="modal-overlay no-print" id="worker-stats-modal">
+        <div class="modal-box">
+            <h2 style="color: var(--accent-color)">📊 నా షిఫ్ట్ వివరాలు</h2>
+            <div class="live-stats">
+                <div class="report-row"><span>ఆపరేటర్:</span> <strong id="my-shift-name">--</strong></div>
+                <div class="report-row"><span>లాగిన్ సమయం:</span> <strong id="my-shift-login">--</strong></div>
+                <div class="report-row"><span>పంపిన వాహనాలు:</span> <strong id="my-shift-handled">0</strong></div>
+                <div class="receipt-line" style="border-bottom: 1px solid #ccc; margin: 10px 0;"></div>
+                <div class="report-row"><span>నగదు:</span> <strong>₹<span id="my-shift-cash">0.00</span></strong></div>
+                <div class="report-row"><span>ఆన్‌లైన్:</span> <strong>₹<span id="my-shift-online">0.00</span></strong></div>
+                <div class="report-row" style="font-size: 18px; color: var(--open-color); margin-top: 10px;"><span>సబ్-టోటల్:</span> <strong>₹<span id="my-shift-total">0.00</span></strong></div>
+                <div class="report-row" style="color: var(--shift-color); margin-top: 10px;"><span>పాస్ ద్వారా వాడినది:</span> <strong>₹<span id="my-shift-pass">0.00</span></strong></div>
+            </div>
+            <button class="btn btn-gray" onclick="closeModals()">మూసివేయి</button>
+        </div>
+    </div>
+
+    <div class="modal-overlay no-print" id="customer-db-modal">
+        <div class="modal-box large">
+            <h2 style="color: var(--admin-color)">👥 కస్టమర్ డేటాబేస్ డైరెక్టరీ</h2>
+            <p style="font-size: 12px; color: #555; margin-top: 0;">సిస్టమ్‌లో ఒకసారి ఎంటర్ చేసిన నంబర్లు అన్నీ ఇక్కడ ఆటోమేటిక్‌గా సేవ్ అవుతాయి.</p>
+            
+            <input type="text" class="customer-search" id="customer-search-input" placeholder="పేరు లేదా నంబర్‌తో వెతకండి..." onkeyup="filterCustomerDB()">
+            
+            <div style="max-height: 300px; overflow-y: auto; border: 1px solid #ccc; border-radius: 4px; margin-bottom: 15px;">
+                <table class="customer-table">
+                    <thead>
+                        <tr>
+                            <th>కస్టమర్ పేరు</th>
+                            <th>ఫోన్ నంబర్</th>
+                            <th>బండి నంబర్</th>
+                            <th>చివరి ఎంట్రీ</th>
+                        </tr>
+                    </thead>
+                    <tbody id="customer-db-body">
+                        </tbody>
+                </table>
+            </div>
+            <div style="display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap;">
+                <button class="btn btn-danger" style="flex:1; margin-top:0;" onclick="clearCustomerDB()">🗑️ కస్టమర్ డేటా మొత్తం డిలీట్ చేయి</button>
+                <button class="btn btn-gray" style="flex:1; margin-top:0;" onclick="closeModals()">మూసివేయి</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay no-print" id="admin-settings-modal">
+        <div class="modal-box large">
+            <h2 style="color: var(--admin-color)">⚙️ మాస్టర్ సెట్టింగ్స్</h2>
+            
+            <div class="admin-section" style="background-color: #fff1f2; border-color: #fecaca;">
+                <h3 style="color: var(--occupied-color); margin-top:0;">⚠️ డేటాబేస్ క్లియర్</h3>
+                <p style="font-size:12px; color:#555; margin-top:0;">జాగ్రత్త! ఇక్కడ డిలీట్ చేస్తే డేటా మళ్ళీ తిరిగి రాదు.</p>
+                <div style="display:flex; gap:10px; flex-wrap: wrap;">
+                    <button class="btn btn-danger" style="flex:1; margin-top:0; min-width: 150px; padding: 10px;" onclick="clearCustomerDB()">👥 కస్టమర్ డేటా క్లియర్</button>
+                    <button class="btn btn-danger" style="flex:1; margin-top:0; min-width: 150px; padding: 10px;" onclick="clearRevenueHistory()">💰 ఆదాయం & హిస్టరీ క్లియర్</button>
+                    <button class="btn btn-danger" style="flex:1; margin-top:0; min-width: 150px; padding: 10px;" onclick="clearAllSpots()">🚗 పార్కింగ్ స్పాట్స్ క్లియర్</button>
+                </div>
+            </div>
+
+            <div class="admin-section">
+                <h3>💰 పార్కింగ్ ధరల సెట్టింగ్స్</h3>
+                <p style="font-size:12px; color:#555; margin-top:0;">
+                   <b>బైక్, ఆటో, కారు:</b> లోపలికి రాగానే మొదటి 12 గంటలకు మీరు సెట్ చేసిన ఫ్లాట్ ధర పడుతుంది. ఆ తర్వాత ప్రతి 12 గంటలకూ అదే ఫీజు యాడ్ అవుతూ ఉంటుంది.<br>
+                   <b>సైకిల్:</b> ప్రతి 24 గంటలకు ఒక బ్లాక్.
+                </p>
+                <div style="display:flex; gap:10px; margin-bottom:10px; flex-wrap: wrap;">
+                    <div class="form-group" style="flex:1; min-width: 80px;"><label>సైకిల్ (ప్రతి 24గం. కు ₹)</label><input type="number" id="rate-2" min="0" step="1"></div>
+                    <div class="form-group" style="flex:1; min-width: 80px;"><label>బైక్ (ప్రతి 12గం. కు ₹)</label><input type="number" id="rate-3" min="0" step="1"></div>
+                    <div class="form-group" style="flex:1; min-width: 80px;"><label>ఆటో (ప్రతి 12గం. కు ₹)</label><input type="number" id="rate-4" min="0" step="1"></div>
+                    <div class="form-group" style="flex:1; min-width: 80px;"><label>కారు (ప్రతి 12గం. కు ₹)</label><input type="number" id="rate-5" min="0" step="1"></div>
+                    <div class="form-group" style="flex:1; min-width: 80px;"><label>పాస్ డిస్కౌంట్ (%)</label><input type="number" id="admin-pass-discount" min="0" max="100" step="1"></div>
+                </div>
+                <div class="form-group">
+                    <label>యాక్టివ్ UPI ID</label>
+                    <input type="text" id="admin-upi-id" placeholder="ఉదా: 9440485256@ptyes">
+                </div>
+                <div class="form-group">
+                    <label style="color: var(--whatsapp-color);">ఓనర్ / అడ్మిన్ వాట్సాప్ నంబర్ (రిపోర్ట్స్ కోసం)</label>
+                    <input type="tel" id="admin-wa-phone" placeholder="ఉదా: 919876543210 (91 తో కలిపి)">
+                </div>
+                <button class="btn btn-blue" onclick="saveSystemSettings()">క్లౌడ్‌లో సేవ్ చేయి</button>
+            </div>
+
+            <div class="admin-section">
+                <h3>👥 ఆపరేటర్ల నిర్వహణ</h3>
+                <div class="user-list" id="admin-user-list"></div>
+                <div style="display:flex; gap:10px; align-items: flex-end; flex-wrap: wrap;">
+                    <div class="form-group" style="flex:1; min-width: 120px; margin-bottom:0;"><label>యూజర్ నేమ్</label><input type="text" id="new-user-name"></div>
+                    <div class="form-group" style="flex:1; min-width: 120px; margin-bottom:0;"><label>పాస్‌వర్డ్</label><input type="text" id="new-user-pass"></div>
+                    <button class="btn btn-green" style="flex:1; min-width: 120px; margin-top:10px;" onclick="addNewUser()">కొత్త ఆపరేటర్‌ను జోడించండి</button>
+                </div>
+            </div>
+
+            <div class="admin-section" style="text-align: center;">
+                <button class="btn btn-red" style="width: auto; padding: 10px 30px;" onclick="adminDirectLogout()">🔴 అడ్మిన్ లాగౌట్</button>
+            </div>
+            <button class="btn btn-gray" onclick="closeModals()">ప్యానెల్ మూసివేయి</button>
+        </div>
+    </div>
+
+    <div class="modal-overlay no-print" id="report-modal">
+        <div class="modal-box large">
+            <h2 style="color: var(--admin-color)">📊 ఆదాయ నివేదిక (డే-వైజ్ & 12 Hrs)</h2>
+            <div class="admin-section" style="background: #f8fafc;">
+                <h3 style="margin-bottom: 10px;">📅 తేదీని ఎంచుకోండి</h3>
+                <div class="date-inputs" style="display: flex; gap: 10px; flex-wrap: wrap;">
+                    <div class="form-group" style="flex:1; min-width: 130px;"><label>ప్రారంభ తేదీ</label><input type="date" id="rep-start-date"></div>
+                    <div class="form-group" style="flex:1; min-width: 130px;"><label>ముగింపు తేదీ</label><input type="date" id="rep-end-date"></div>
+                </div>
+                <div style="display: flex; gap: 5px; margin-top: 5px; flex-wrap: wrap;">
+                    <button class="btn btn-blue" style="margin-top:0; flex:1; min-width: 80px;" onclick="calculateReport()">🔍 వెతుకు</button>
+                    <button class="btn btn-outline" style="margin-top:0; flex:1; min-width: 80px; padding: 8px;" onclick="setQuickDate('today')">ఈ రోజు</button>
+                    <button class="btn btn-outline" style="margin-top:0; flex:1; min-width: 80px; padding: 8px;" onclick="setQuickDate('week')">ఈ వారం</button>
+                    <button class="btn btn-outline" style="margin-top:0; flex:1; min-width: 80px; padding: 8px;" onclick="setQuickDate('month')">ఈ నెల</button>
+                </div>
+            </div>
+            <div class="live-stats">
+                <div class="report-row"><span>పార్క్ చేసిన వాహనాలు:</span> <strong id="rep-handled">0</strong></div>
+                <div class="receipt-line" style="border-bottom: 1px solid #ccc; margin: 10px 0;"></div>
+                <div class="report-row"><span>నగదు:</span> <strong>₹<span id="rep-cash">0.00</span></strong></div>
+                <div class="report-row"><span>ఆన్‌లైన్ (UPI):</span> <strong style="color: var(--accent-color);">₹<span id="rep-online">0.00</span></strong></div>
+                <div class="report-row" style="color: var(--shift-color);"><span>పాస్ ద్వారా వాడినది:</span> <strong>₹<span id="rep-pass">0.00</span></strong></div>
+                <div class="report-row" style="margin-top: 10px; font-size: 18px; color: var(--admin-color);"><span>మొత్తం (నగదు + ఆన్‌లైన్):</span> <strong>₹<span id="rep-total">0.00</span></strong></div>
+            </div>
+            <div style="display:flex; gap:10px; flex-direction: column;">
+                <button class="btn btn-blue" onclick="exportToExcel()">📊 ఎక్సెల్ కు ఎగుమతి చేయి (Export Excel)</button>
+                <button class="btn btn-green" style="margin-top: 0;" onclick="printAdminReport()">🖨️ వివరమైన రిపోర్ట్ ప్రింట్ చేయి</button>
+                <button class="btn btn-gray" style="margin-top: 0;" onclick="closeModals()">మూసివేయి</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="toast-container" class="no-print"></div>
+
+    <script>
+        const firebaseConfig = {
+            apiKey: "AIzaSyDGA3mYWz9Y3crsZZ1u2-YmIv_FxLLLL_Q",
+            authDomain: "parking-space-7aae1.firebaseapp.com",
+            databaseURL: "https://parking-space-7aae1-default-rtdb.asia-southeast1.firebasedatabase.app",
+            projectId: "parking-space-7aae1",
+            storageBucket: "parking-space-7aae1.firebasestorage.app",
+            messagingSenderId: "1033034198272",
+            appId: "1:1033034198272:web:48400bd335296a0ced57e5",
+            measurementId: "G-KX1YXRX75E"
+        };
+
+        if (!firebase.apps.length) { firebase.initializeApp(firebaseConfig); }
+        const db = firebase.database();
+
+        const TOTAL_SPOTS = 300;
+        let systemSettings = {
+            rates: { "2": 10.00, "3": 20.00, "4": 30.00, "5": 50.00 },
+            passDiscount: 10,
+            activeUpiId: "9440485256@ptyes",
+            adminPhone: "",
+            users: {
+                "admin": { pass: "Admin@26", role: "admin", name: "Administrator" },
+                "ramesh": { pass: "ram123", role: "operator", name: "Ramesh" },
+                "suresh": { pass: "sur456", role: "operator", name: "Suresh" },
+                "mahesh": { pass: "mah789", role: "operator", name: "Mahesh" },
+                "ganesh": { pass: "gan000", role: "operator", name: "Ganesh" }
+            }
+        };
+
+        let globalStats = { totalEntered: 0, totalLeft: 0, totalCash: 0, totalOnline: 0, totalPass: 0 };
+        let activeSessions = {}; 
+        let passes = {}; 
+        let customerDB = {}; 
+        let isTester = false; 
+        
+        let currentShift = { active: false, username: "", name: "", role: "", loginTime: null, logoutTime: null, handled: 0, cash: 0, online: 0, passUsage: 0 };
+        
+        // ADMIN TABS NO LONGER WIPE THEMSELVES - LocalStorage forced for everyone.
+        const savedSession = localStorage.getItem('parkingShiftSession');
+        
+        if(savedSession) {
+            try {
+                currentShift = JSON.parse(savedSession);
+                if(currentShift.role === 'tester') { isTester = true; }
+            } catch (e) {
+                clearLocalSession();
+            }
+        }
+
+        function saveSessionLocally() {
+            if (!currentShift || !currentShift.active) return;
+            localStorage.setItem('parkingShiftSession', JSON.stringify(currentShift));
+            sessionStorage.removeItem('parkingShiftSession'); // Cleanup legacy if exists
+        }
+
+        function clearLocalSession() {
+            localStorage.removeItem('parkingShiftSession');
+            sessionStorage.removeItem('parkingShiftSession');
+        }
+
+        function getLocalDateString(d) {
+            const year = d.getFullYear();
+            const month = String(d.getMonth() + 1).padStart(2, '0');
+            const day = String(d.getDate()).padStart(2, '0');
+            return `${year}-${month}-${day}`;
+        }
+
+        let spots = Array.from({length: TOTAL_SPOTS}, (_, i) => ({ id: i + 1, isOccupied: false, plate: '', personName: '', phone: '', type: null, entryTime: null, hasPass: false }));
+        let shiftHistory = [];
+        let currentReportData = { handled: 0, cash: 0, online: 0, passUsage: 0, shifts: [], grouped: {} };
+        let currentActiveSpot = null;
+        let timerInterval = null;
+        let currentFeeCalculation = 0;
+        let appliedDiscountAmount = 0;
+
+        // Reset body class after every print so the dashboard UI is restored
+        window.addEventListener('afterprint', () => { document.body.className = ''; });
+
+        function escapeHTML(str) {
+            if (!str) return '';
+            return str.replace(/[&<>'"]/g, 
+                tag => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[tag] || tag)
+            );
+        }
+
+        // 📷 ANPR / OCR SCANNER INTEGRATION
+        async function processPlateImage(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const statusEl = document.getElementById('ocr-status');
+            const plateInput = document.getElementById('input-plate');
+
+            statusEl.style.display = 'block';
+            statusEl.innerText = "స్కానింగ్ జరుగుతోంది... ⏳";
+            statusEl.style.color = "var(--accent-color)";
+            plateInput.value = "స్కానింగ్...";
+
+            try {
+                const worker = await Tesseract.createWorker('eng');
+                const ret = await worker.recognize(file);
+                await worker.terminate();
+
+                let text = ret.data.text;
+                let cleanPlate = text.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+
+                if (cleanPlate.length > 2) {
+                    plateInput.value = cleanPlate;
+                    statusEl.innerText = "✅ స్కాన్ పూర్తయింది! ఒకసారి చెక్ చేయండి.";
+                    statusEl.style.color = "var(--open-color)";
+                    setTimeout(() => statusEl.style.display = 'none', 4000);
+                    autoSaveToCustomerDB();
+                } else {
+                    plateInput.value = "";
+                    statusEl.innerText = "❌ నంబర్ సరిగ్గా కనిపించలేదు. మాన్యువల్‌గా టైప్ చేయండి.";
+                    statusEl.style.color = "red";
+                }
+            } catch (err) {
+                console.error("OCR Error:", err);
+                plateInput.value = "";
+                statusEl.innerText = "❌ స్కానింగ్ విఫలమైంది. మాన్యువల్‌గా టైప్ చేయండి.";
+                statusEl.style.color = "red";
+            }
+        }
+
+        function sendWhatsAppReceipt(phone, messageText) {
+            let cleanPhone = phone.replace(/\D/g, ''); 
+            if (cleanPhone.length === 10) { cleanPhone = '91' + cleanPhone; }
+            if (cleanPhone.length < 10) {
+                alert("దయచేసి సరైన 10 అంకెల ఫోన్ నంబర్‌ను ఎంటర్ చేయండి. వాట్సాప్ మెసేజ్ రద్దు చేయబడింది.");
+                return;
+            }
+            const text = encodeURIComponent(messageText);
+            window.open(`https://wa.me/${cleanPhone}?text=${text}`, '_blank');
+        }
+
+        function sendWhatsAppShiftReport() {
+            let adminPhone = systemSettings.adminPhone;
+            if (!adminPhone || adminPhone.length < 10) {
+                alert("అడ్మిన్ సెట్టింగ్స్‌లో ముందుగా ఓనర్ వాట్సాప్ నంబర్‌ను సెట్ చేయండి!");
+                return;
+            }
+            
+            let total = parseFloat(currentShift.cash || 0) + parseFloat(currentShift.online || 0);
+            
+            let msg = `*శ్రీ వెంకటేశ్వర పార్కింగ్ - షిఫ్ట్ రిపోర్ట్* 📊\n\n`;
+            msg += `👤 ఆపరేటర్: ${currentShift.name}\n`;
+            msg += `🕒 ముగింపు: ${new Date().toLocaleTimeString('te-IN')}\n\n`;
+            msg += `🚗 పంపిన బండ్లు: ${currentShift.handled || 0}\n`;
+            msg += `💵 నగదు (Cash): ₹${parseFloat(currentShift.cash || 0).toFixed(2)}\n`;
+            msg += `📱 ఆన్‌లైన్ (UPI): ₹${parseFloat(currentShift.online || 0).toFixed(2)}\n`;
+            msg += `💰 *మొత్తం (Total): ₹${total.toFixed(2)}*\n\n`;
+            
+            if (currentShift.passUsage > 0) {
+                msg += `🎟️ పాస్ వాడకం: ₹${parseFloat(currentShift.passUsage || 0).toFixed(2)}\n`;
+            }
+
+            let cleanPhone = adminPhone.replace(/\D/g, '');
+            if (cleanPhone.length === 10) { cleanPhone = '91' + cleanPhone; }
+
+            window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(msg)}`, '_blank');
+        }
+
+        db.ref('/').on('value', (snapshot) => {
+            const data = snapshot.val();
+            if (data) {
+                if(data.settings) systemSettings = data.settings;
+                if(!isTester && data.spots) {
+                    spots = Array.isArray(data.spots) ? data.spots : Object.values(data.spots);
+                    for(let i=0; i<TOTAL_SPOTS; i++) {
+                        if(!spots[i]) spots[i] = { id: i + 1, isOccupied: false, plate: '', personName: '', phone: '', type: null, entryTime: null, hasPass: false };
+                    }
+                } else if(!isTester) {
+                    // spots key missing, keep local
+                }
+                if(data.globalStats) globalStats = data.globalStats;
+                if(data.shiftHistory) shiftHistory = data.shiftHistory;
+                if(data.activeSessions) activeSessions = data.activeSessions; else activeSessions = {};
+                if(data.passes) passes = data.passes; else passes = {};
+                if(data.customerDB) customerDB = data.customerDB; else customerDB = {};
+            } else if (!isTester) {
+                pushToCloud(); 
+            }
+            document.getElementById('cloud-loader').style.display = 'none';
+            
+            updateShiftUI();
+            updateLiveAdminDashboard(); 
+            renderGrid();
+            
+            if(document.getElementById('admin-settings-modal').style.display === 'flex') {
+                renderAdminUserList();
+            }
+            if(document.getElementById('pass-modal').style.display === 'flex') {
+                searchPass();
+            }
+            if(document.getElementById('customer-db-modal').style.display === 'flex') {
+                filterCustomerDB();
+            }
+        }, (error) => {
+            console.error("Firebase connection error:", error);
+            const loader = document.getElementById('cloud-loader');
+            loader.style.display = 'flex';
+            loader.innerHTML = `<div style="font-size:40px;margin-bottom:10px;">❌</div>
+                <div style="color:var(--occupied-color);text-align:center;">డేటాబేస్ కనెక్షన్ విఫలమైంది.<br><small style="font-size:14px;color:#555;">ఇంటర్నెట్ కనెక్షన్ చెక్ చేయండి మరియు పేజీని రిఫ్రెష్ చేయండి.</small></div>
+                <button onclick="location.reload()" style="margin-top:15px;padding:10px 25px;background:var(--accent-color);color:white;border:none;border-radius:6px;cursor:pointer;font-size:16px;">🔄 రిఫ్రెష్</button>`;
+        });
+
+        function pushToCloud() {
+            if(isTester) return; 
+            
+            let cleanSpots = Array.isArray(spots) ? spots : Object.values(spots || {});
+
+            db.ref('/').update({ 
+                settings: systemSettings || {}, 
+                spots: cleanSpots, 
+                globalStats: globalStats || { totalEntered: 0, totalLeft: 0, totalCash: 0, totalOnline: 0, totalPass: 0 }, 
+                shiftHistory: shiftHistory || [],
+                passes: passes || {},
+                customerDB: customerDB || {}
+            }).catch(e => console.error("Cloud push error:", e));
+
+            // ADMINS ARE NO LONGER EXCLUDED - Live sync is enabled for owner accounts
+            if(currentShift && currentShift.active && currentShift.role !== 'tester') {
+                db.ref('/activeSessions/' + currentShift.username).set(currentShift).catch(e => console.error(e));
+            }
+        }
+
+        function simulateTime(hours) {
+            const ms = hours * 3600 * 1000;
+            let updated = 0;
+            let spotsArray = Array.isArray(spots) ? spots : Object.values(spots || {});
+            spotsArray.forEach(spot => {
+                if (spot && spot.isOccupied && spot.entryTime) {
+                    spot.entryTime -= ms;
+                    updated++;
+                }
+            });
+            renderGrid();
+            showToast(`${hours} గంటలు ముందుకు వెళ్ళింది (${updated} వాహనాలు అప్‌డేట్ అయ్యాయి).`);
+        }
+
+        function clearCustomerDB() {
+            if (currentShift.role !== 'tester' && currentShift.role !== 'admin') return;
+            if (confirm("మీరు ఖచ్చితంగా కస్టమర్ డేటాబేస్ మొత్తం డిలీట్ చేయాలనుకుంటున్నారా?")) {
+                firebase.database().ref('/customerDB').remove();
+                customerDB = {};
+                filterCustomerDB();
+                showToast("కస్టమర్ డేటాబేస్ క్లియర్ చేయబడింది.");
+            }
+        }
+
+        function clearRevenueHistory() {
+            if (currentShift.role !== 'tester' && currentShift.role !== 'admin') return;
+            if (confirm("ఆదాయం మరియు పాత రిపోర్ట్ హిస్టరీ మొత్తం డిలీట్ చేయాలా?")) {
+                let freshStats = { totalEntered: 0, totalLeft: 0, totalCash: 0, totalOnline: 0, totalPass: 0 };
+                firebase.database().ref('/globalStats').set(freshStats);
+                firebase.database().ref('/shiftHistory').remove();
+                globalStats = freshStats;
+                shiftHistory = [];
+                updateLiveAdminDashboard();
+                showToast("ఆదాయం & హిస్టరీ క్లియర్ చేయబడింది.");
+            }
+        }
+
+        function clearAllSpots() {
+            if (currentShift.role !== 'tester' && currentShift.role !== 'admin') return;
+            if (confirm("లోపల ఉన్న బండ్లన్నింటినీ ఒకేసారి డిలీట్ చేసి పార్కింగ్ ఖాళీ చేయాలా?")) {
+                let emptySpots = Array.from({length: TOTAL_SPOTS}, (_, i) => ({ id: i + 1, isOccupied: false, plate: '', personName: '', phone: '', type: null, entryTime: null, hasPass: false }));
+                firebase.database().ref('/spots').set(emptySpots);
+                spots = emptySpots;
+                renderGrid();
+                updateLiveAdminDashboard();
+                showToast("పార్కింగ్ స్పాట్స్ అన్నీ ఖాళీ చేయబడ్డాయి.");
+            }
+        }
+
+        function autoSaveToCustomerDB() {
+            const name = document.getElementById('input-person-name').value.trim();
+            const phone = document.getElementById('input-phone').value.trim().replace(/\D/g, '');
+            let plate = document.getElementById('input-plate').value.trim().toUpperCase();
+            
+            const safePlate = plate.replace(/[.#$\[\]]/g, '');
+
+            if (name && (phone.length >= 10 || safePlate)) {
+                let id = (phone.length >= 10) ? phone : safePlate; 
+                if (!customerDB) customerDB = {};
+                
+                customerDB[id] = {
+                    name: name,
+                    phone: phone || "--",
+                    plate: plate || "--",
+                    lastSeen: Date.now()
+                };
+                
+                if (!isTester) {
+                    firebase.database().ref('/customerDB/' + id).set(customerDB[id]).catch(e => console.error(e));
+                }
+            }
+        }
+
+        function openCustomerDB() {
+            if(currentShift.role !== "admin" && currentShift.role !== "tester") return;
+            document.getElementById('customer-search-input').value = '';
+            filterCustomerDB();
+            document.getElementById('customer-db-modal').style.display = 'flex';
+        }
+
+        function filterCustomerDB() {
+            const query = document.getElementById('customer-search-input').value.toLowerCase();
+            const tbody = document.getElementById('customer-db-body');
+            tbody.innerHTML = '';
+            
+            if(!customerDB || Object.keys(customerDB).length === 0) {
+                tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;">డేటాబేస్‌లో కస్టమర్లు ఎవరూ లేరు.</td></tr>';
+                return;
+            }
+
+            let sortedCustomers = Object.values(customerDB).sort((a,b) => b.lastSeen - a.lastSeen);
+
+            sortedCustomers.forEach(cust => {
+                if (!cust) return;
+                const custName = (cust.name || '').toLowerCase();
+                const custPhone = (cust.phone || '');
+                const custPlate = (cust.plate || '').toLowerCase();
+                if (custName.includes(query) || custPhone.includes(query) || custPlate.includes(query)) {
+                    let dateStr = cust.lastSeen ? new Date(cust.lastSeen).toLocaleDateString('te-IN') : '--';
+                    tbody.innerHTML += `
+                        <tr>
+                            <td><strong>${escapeHTML(cust.name)}</strong></td>
+                            <td>${escapeHTML(cust.phone)}</td>
+                            <td>${escapeHTML(cust.plate)}</td>
+                            <td>${dateStr}</td>
+                        </tr>
+                    `;
+                }
+            });
+        }
+
+        function getTodayTotals() {
+            const today = new Date().setHours(0,0,0,0);
+            let tHandled = 0; let tCash = 0; let tOnline = 0; let tPass = 0;
+
+            let historyArray = Array.isArray(shiftHistory) ? shiftHistory : Object.values(shiftHistory || {});
+            historyArray.forEach(shift => {
+                if(shift && shift.logoutTime >= today) {
+                    tHandled += (shift.handled || 0);
+                    tCash += parseFloat(shift.cash || 0);
+                    tOnline += parseFloat(shift.online || 0);
+                    tPass += parseFloat(shift.passUsage || 0);
+                }
+            });
+
+            if (activeSessions) {
+                Object.values(activeSessions).forEach(session => {
+                    if(session && session.username !== currentShift.username && session.loginTime >= today) {
+                        tHandled += (session.handled || 0);
+                        tCash += parseFloat(session.cash || 0);
+                        tOnline += parseFloat(session.online || 0);
+                        tPass += parseFloat(session.passUsage || 0);
+                    }
+                });
+            }
+
+            if (currentShift && currentShift.active && currentShift.role !== 'tester') {
+                tHandled += (currentShift.handled || 0);
+                tCash += parseFloat(currentShift.cash || 0);
+                tOnline += parseFloat(currentShift.online || 0);
+                tPass += parseFloat(currentShift.passUsage || 0);
+            }
+
+            return { tHandled, tCash, tOnline, tPass };
+        }
+
+        function updateLiveAdminDashboard() {
+            const dash = document.getElementById('main-admin-dashboard');
+            if (!currentShift || !currentShift.active || (currentShift.role !== "admin" && currentShift.role !== "tester")) {
+                dash.style.display = 'none';
+                return;
+            }
+            dash.style.display = 'block';
+
+            document.getElementById('dash-date').innerText = new Date().toLocaleDateString('te-IN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+
+            const userListDiv = document.getElementById('dash-active-users');
+            userListDiv.innerHTML = '';
+            let hasActiveUsers = false;
+            
+            if (activeSessions) {
+                for (const [uname, session] of Object.entries(activeSessions)) {
+                    // ADMINS ARE NO LONGER HIDDEN FROM LIVE OPERATORS LIST
+                    if(!session || session.role === 'tester') continue;
+                    hasActiveUsers = true;
+                    let loginTimeStr = session.loginTime ? new Date(session.loginTime).toLocaleTimeString('te-IN', {hour: '2-digit', minute:'2-digit'}) : '--';
+                    userListDiv.innerHTML += `
+                        <div class="user-chip">
+                            👤 ${escapeHTML(session.name)} 
+                            <span class="time">(${loginTimeStr})</span>
+                        </div>
+                    `;
+                }
+            }
+            if(!hasActiveUsers) userListDiv.innerHTML = '<span style="font-size: 13px; color: #94a3b8;">ఎవరూ లేరు</span>';
+
+            let totals = getTodayTotals();
+            let spotsArray = Array.isArray(spots) ? spots : Object.values(spots || {});
+            let inLot = spotsArray.filter(s => s && s.isOccupied).length;
+            
+            let totalEnteredToday = totals.tHandled + inLot;
+
+            document.getElementById('dash-total-entered').innerText = totalEnteredToday;
+            document.getElementById('dash-total-left').innerText = totals.tHandled;
+            document.getElementById('dash-in-lot').innerText = inLot;
+            
+            document.getElementById('dash-cash').innerText = `₹${totals.tCash.toFixed(2)}`;
+            document.getElementById('dash-online').innerText = `₹${totals.tOnline.toFixed(2)}`;
+            document.getElementById('dash-pass').innerText = `₹${totals.tPass.toFixed(2)}`;
+            document.getElementById('dash-grand-total').innerText = `₹${(totals.tCash + totals.tOnline).toFixed(0)}`;
+        }
+
+        function showToast(message, isSuccess = true) {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.className = 'toast';
+            toast.style.borderLeftColor = isSuccess ? 'var(--open-color)' : 'var(--accent-color)';
+            toast.innerHTML = message;
+            container.appendChild(toast);
+            setTimeout(() => toast.classList.add('show'), 10);
+            setTimeout(() => { toast.classList.remove('show'); setTimeout(() => toast.remove(), 300); }, 5000); 
+        }
+
+        function renderGrid() {
+            const grid = document.getElementById('parking-grid');
+            grid.innerHTML = ''; 
+            let occ = 0; let open = 0;
+            
+            let spotsArray = Array.isArray(spots) ? spots : Object.values(spots || {});
+            
+            spotsArray.forEach((spot, index) => {
+                if(!spot) return;
+                
+                spot.isOccupied ? occ++ : open++;
+                const spotDiv = document.createElement('div');
+                spotDiv.className = `spot ${spot.isOccupied ? 'occupied' : 'open'} ${!currentShift.active ? 'disabled' : ''}`;
+                
+                if(spot.isOccupied && spot.personName) {
+                    spotDiv.title = `కస్టమర్: ${escapeHTML(spot.personName)} | బండి: ${escapeHTML(spot.plate)}`;
+                }
+
+                let icon = '';
+                if(spot.isOccupied) {
+                    if(spot.type === "2") icon = '🚲';
+                    else if(spot.type === "3") icon = '🏍️';
+                    else if(spot.type === "4") icon = '🛺';
+                    else if(spot.type === "5") icon = '🚗';
+                }
+
+                spotDiv.innerHTML = `${spot.id} <div class="vehicle-icon">${icon}</div>`;
+                if(spot.isOccupied && spot.hasPass) {
+                    spotDiv.innerHTML += `<div style="font-size:8px; color:#8b5cf6; margin-top:2px;">🎟️ పాస్</div>`;
+                }
+                
+                if(currentShift.active) spotDiv.addEventListener('click', () => handleSpotClick(index));
+                grid.appendChild(spotDiv);
+            });
+
+            document.getElementById('count-open').innerText = open;
+            document.getElementById('count-occupied').innerText = occ;
+        }
+
+        function handleSpotClick(index) {
+            let spotsArray = Array.isArray(spots) ? spots : Object.values(spots || {});
+            currentActiveSpot = spotsArray[index];
+            if(!currentActiveSpot) return;
+            
+            if (!currentActiveSpot.isOccupied) {
+                document.getElementById('checkin-title').innerText = `స్పాట్ నంబర్ #${currentActiveSpot.id}`;
+                document.getElementById('input-person-name').value = '';
+                document.getElementById('input-plate').value = '';
+                document.getElementById('input-phone').value = '';
+                document.getElementById('input-has-pass').checked = false;
+                document.getElementById('checkin-modal').style.display = 'flex';
+                setTimeout(() => document.getElementById('input-person-name').focus(), 50);
+            } else {
+                document.getElementById('checkout-title').innerText = `స్పాట్ #${currentActiveSpot.id} వివరాలు`;
+                document.getElementById('info-person-name').innerText = currentActiveSpot.personName || "--";
+                document.getElementById('info-phone').innerText = currentActiveSpot.phone || "--";
+                document.getElementById('info-plate').innerText = currentActiveSpot.plate || "--";
+                
+                if(currentActiveSpot.hasPass) {
+                    document.getElementById('input-payment-method').value = 'PASS';
+                } else {
+                    document.getElementById('input-payment-method').value = 'CASH';
+                }
+                togglePaymentMethod();
+                
+                document.getElementById('input-cash-received').value = ''; 
+                
+                updateLiveCheckoutStats();
+                document.getElementById('checkout-modal').style.display = 'flex';
+                
+                document.getElementById('info-time').innerText = "0h 0m 0s";
+                timerInterval = setInterval(updateLiveCheckoutStats, 1000);
+                updateLiveCheckoutStats(); 
+            }
+        }
+
+        function togglePaymentMethod() {
+            const method = document.getElementById('input-payment-method').value;
+            const upiDisplay = document.getElementById('upi-display');
+            const passDisplay = document.getElementById('pass-display');
+            const cashDisplay = document.getElementById('cash-input-group');
+
+            cashDisplay.style.display = 'none';
+            upiDisplay.style.display = 'none';
+            passDisplay.style.display = 'none';
+
+            if (method === 'CASH') {
+                cashDisplay.style.display = 'block';
+            } else if (method === 'ONLINE') {
+                document.getElementById('display-upi-id').innerText = escapeHTML(systemSettings.activeUpiId);
+                upiDisplay.style.display = 'block';
+            } else if (method === 'PASS') {
+                const phone = currentActiveSpot.phone;
+                let bal = (passes && passes[phone]) ? passes[phone].balance : 0;
+                document.getElementById('display-pass-bal').innerText = parseFloat(bal).toFixed(2);
+                passDisplay.style.display = 'block';
+            }
+        }
+
+        function openPassModal() {
+            document.getElementById('pass-search-id').value = '';
+            document.getElementById('pass-recharge-amount').value = '';
+            document.getElementById('pass-new-name').value = '';
+            
+            document.getElementById('pass-details').style.display = 'none';
+            document.getElementById('pass-register').style.display = 'none';
+            document.getElementById('pass-modal').style.display = 'flex';
+        }
+
+        function searchPass() {
+            const id = document.getElementById('pass-search-id').value.trim();
+            if (!id) return;
+            
+            if (passes && passes[id]) {
+                document.getElementById('pass-display-name').innerText = escapeHTML(passes[id].name);
+                document.getElementById('pass-display-balance').innerText = parseFloat(passes[id].balance || 0).toFixed(2);
+                document.getElementById('pass-display-used').innerText = parseFloat(passes[id].used || 0).toFixed(2);
+                document.getElementById('pass-details').style.display = 'block';
+                document.getElementById('pass-register').style.display = 'none';
+            } else {
+                document.getElementById('pass-details').style.display = 'none';
+                document.getElementById('pass-register').style.display = 'block';
+            }
+        }
+
+        function registerNewPass() {
+            const id = document.getElementById('pass-search-id').value.trim();
+            const name = document.getElementById('pass-new-name').value.trim();
+            if (!id || id.length < 10 || !name) return alert("దయచేసి కస్టమర్ పేరు మరియు సరైన 10 అంకెల ఫోన్ నంబర్ ఎంటర్ చేయండి.");
+            
+            if(!passes) passes = {};
+            passes[id] = { name: name, balance: 0, used: 0 };
+            
+            pushToCloud();
+            searchPass();
+            showToast("కొత్త పాస్ అకౌంట్ క్రియేట్ చేయబడింది.");
+        }
+
+        function rechargePass() {
+            const id = document.getElementById('pass-search-id').value.trim();
+            const amount = parseFloat(document.getElementById('pass-recharge-amount').value) || 0;
+            const method = document.getElementById('pass-recharge-method').value;
+
+            if (!id || id.length < 10) return alert("దయచేసి సరైన ఫోన్ నంబర్‌ను ఎంటర్ చేయండి.");
+            if (amount <= 0) return alert("దయచేసి సరైన అమౌంట్ ఎంటర్ చేయండి.");
+            if (!passes[id]) return alert("పాస్ అకౌంట్ దొరకలేదు.");
+
+            passes[id].balance = parseFloat(passes[id].balance || 0) + amount;
+
+            if (method === 'CASH') {
+                currentShift.cash = parseFloat(currentShift.cash || 0) + amount;
+                globalStats.totalCash = parseFloat(globalStats.totalCash || 0) + amount;
+            } else {
+                currentShift.online = parseFloat(currentShift.online || 0) + amount;
+                globalStats.totalOnline = parseFloat(globalStats.totalOnline || 0) + amount;
+            }
+            
+            saveSessionLocally();
+            pushToCloud();
+            
+            document.getElementById('pass-recharge-amount').value = '';
+            searchPass(); 
+            showToast(`₹${amount} బ్యాలెన్స్ యాడ్ చేయబడింది (${method === 'CASH' ? 'నగదు' : 'ఆన్‌లైన్'}).`);
+        }
+
+        function printPassReceipt() {
+            const phone = document.getElementById('pass-search-id').value.trim();
+            if (!phone || !passes[phone]) return alert("దయచేసి సరైన పాస్‌ని ఎంచుకోండి.");
+
+            const pass = passes[phone];
+            document.body.className = 'print-mode-receipt';
+            document.getElementById('receipt-type').innerText = 'మంత్లీ పాస్ రసీదు';
+            
+            let printHTML = `
+                <div class="receipt-row"><span>తేదీ:</span> <span>${new Date().toLocaleString('te-IN')}</span></div>
+                <div class="receipt-row"><span>ఆపరేటర్:</span> <span>${escapeHTML(currentShift.name)}</span></div>
+                <div class="receipt-line"></div>
+                <div class="receipt-row"><span>కస్టమర్ పేరు:</span> <strong>${escapeHTML(pass.name)}</strong></div>
+                <div class="receipt-row"><span>ఫోన్ నంబర్:</span> <strong>${escapeHTML(phone)}</strong></div>
+                <div class="receipt-line"></div>
+                <div class="receipt-row" style="font-size:16px;"><span>ప్రస్తుత బ్యాలెన్స్:</span> <strong>₹${parseFloat(pass.balance).toFixed(2)}</strong></div>
+                <div class="receipt-line"></div>
+                <div style="text-align:center; font-size:10px; margin-top:5px;">పార్కింగ్ చెక్-అవుట్ సమయంలో ఈ బ్యాలెన్స్ వాడబడుతుంది.</div>
+            `;
+            
+            document.getElementById('receipt-body').innerHTML = printHTML;
+            setTimeout(() => { window.print(); }, 500);
+        }
+
+        function reprintEntryReceipt() {
+            if(!currentActiveSpot) return;
+            document.body.className = 'print-mode-receipt';
+            document.getElementById('receipt-type').innerText = 'ఎంట్రీ రసీదు';
+            
+            const entryDateStr = new Date(currentActiveSpot.entryTime).toLocaleString('te-IN');
+            let passText = currentActiveSpot.hasPass ? " (పాస్)" : "";
+            
+            let printHTML = `
+                <div class="receipt-row"><span>ఆపరేటర్:</span> <span>${escapeHTML(currentShift.name)}</span></div>
+                <div class="receipt-row"><span>కస్టమర్ పేరు:</span> <strong>${escapeHTML(currentActiveSpot.personName || '--')}${passText}</strong></div>
+                <div class="receipt-line"></div>
+                <div class="receipt-row"><span>స్పాట్:</span> <strong style="font-size:16px;">#${currentActiveSpot.id}</strong></div>
+                <div class="receipt-row"><span>బండి:</span> <strong style="font-size:14px;">${escapeHTML(currentActiveSpot.plate || '--')}</strong></div>
+                <div class="receipt-row"><span>ఇన్ (In):</span> <span>${entryDateStr}</span></div>
+                <div class="receipt-line"></div>
+                <div style="text-align:center; font-size:11px; margin-top:5px; font-weight:bold;">బయటకు వెళ్లేటప్పుడు ఈ రసీదు చూపించండి</div>
+            `;
+            document.getElementById('receipt-body').innerHTML = printHTML;
+            setTimeout(() => { window.print(); }, 500);
+        }
+
+        function printCurrentBill() {
+            if(!currentActiveSpot) return;
+            document.body.className = 'print-mode-receipt';
+            document.getElementById('receipt-type').innerText = 'ప్రస్తుత బిల్లు';
+            
+            const entryDateStr = new Date(currentActiveSpot.entryTime).toLocaleString('te-IN');
+            const currentDateStr = new Date().toLocaleString('te-IN');
+            
+            let printHTML = `
+                <div class="receipt-row"><span>ఆపరేటర్:</span> <span>${escapeHTML(currentShift.name)}</span></div>
+                <div class="receipt-row"><span>కస్టమర్ పేరు:</span> <strong>${escapeHTML(currentActiveSpot.personName || '--')}</strong></div>
+                <div class="receipt-line"></div>
+                <div class="receipt-row"><span>స్పాట్:</span> <strong>#${currentActiveSpot.id}</strong></div>
+                <div class="receipt-row"><span>బండి:</span> <strong>${escapeHTML(currentActiveSpot.plate || '--')}</strong></div>
+                <div class="receipt-row"><span>ఇన్ (In):</span> <span>${entryDateStr}</span></div>
+                <div class="receipt-row"><span>ఇప్పటికి:</span> <span>${currentDateStr}</span></div>
+                <div class="receipt-line"></div>
+                <div class="receipt-row"><span>ప్రస్తుత రుసుము:</span> <strong style="font-size:16px;">₹${currentFeeCalculation.toFixed(2)}</strong></div>
+                <div class="receipt-line"></div>
+                <div style="text-align:center; font-size:11px; margin-top:5px;">ఇది ఫైనల్ బిల్లు కాదు</div>
+            `;
+            document.getElementById('receipt-body').innerHTML = printHTML;
+            setTimeout(() => { window.print(); }, 500);
+        }
+
+        function submitCheckin(actionType) {
+            if (!currentActiveSpot || currentActiveSpot.isOccupied) return;
+
+            const personName = document.getElementById('input-person-name').value.trim();
+            const plate = document.getElementById('input-plate').value.trim();
+            const phone = document.getElementById('input-phone').value.trim();
+            const type = document.getElementById('input-type').value;
+            const hasPass = document.getElementById('input-has-pass').checked;
+            
+            if (!personName) return alert("దయచేసి కస్టమర్ పేరు ఎంటర్ చేయండి.");
+
+            let cleanPhone = phone.replace(/\D/g, '');
+            if (actionType === 'whatsapp_print' && (!cleanPhone || cleanPhone.length < 10)) {
+                return alert("దయచేసి వాట్సాప్ మెసేజ్ కోసం సరైన 10 అంకెల నంబర్ ఇవ్వండి.");
+            }
+
+            if (hasPass && (!cleanPhone || cleanPhone.length < 10)) {
+                return alert("పాస్ వాడాలంటే కచ్చితంగా 10 అంకెల ఫోన్ నంబర్ ఇవ్వాలి.");
+            }
+
+            currentActiveSpot.isOccupied = true;
+            currentActiveSpot.personName = personName;
+            currentActiveSpot.plate = plate.toUpperCase();
+            currentActiveSpot.phone = cleanPhone; 
+            currentActiveSpot.type = type;
+            currentActiveSpot.hasPass = hasPass;
+            currentActiveSpot.entryTime = Date.now();
+
+            globalStats.totalEntered = (globalStats.totalEntered || 0) + 1;
+            autoSaveToCustomerDB(); 
+            
+            const checkInTime = new Date().toLocaleTimeString('te-IN', {hour: '2-digit', minute:'2-digit'});
+            const msg = `*శ్రీ వెంకటేశ్వర పార్కింగ్*\n\nహలో ${personName} గారు,\n\n🚘 స్పాట్: #${currentActiveSpot.id}\n📋 బండి నంబర్: ${currentActiveSpot.plate}\n🕒 సమయం: ${checkInTime}\n👤 ఆపరేటర్: ${currentShift.name}\n\n_మా వద్ద పార్క్ చేసినందుకు ధన్యవాదాలు!_`;
+            
+            if (actionType === 'whatsapp_print') {
+                sendWhatsAppReceipt(cleanPhone, msg);
+            }
+            
+            if (actionType === 'whatsapp_print' || actionType === 'print_only') {
+                document.body.className = 'print-mode-receipt';
+                document.getElementById('receipt-type').innerText = 'ఎంట్రీ రసీదు';
+                
+                const entryDateStr = new Date(currentActiveSpot.entryTime).toLocaleString('te-IN');
+                let printHTML = `
+                    <div class="receipt-row"><span>ఆపరేటర్:</span> <span>${escapeHTML(currentShift.name)}</span></div>
+                    <div class="receipt-row"><span>కస్టమర్ పేరు:</span> <strong>${escapeHTML(currentActiveSpot.personName || '--')}</strong></div>
+                    <div class="receipt-line"></div>
+                    <div class="receipt-row"><span>స్పాట్:</span> <strong style="font-size:16px;">#${currentActiveSpot.id}</strong></div>
+                    <div class="receipt-row"><span>బండి:</span> <strong style="font-size:14px;">${escapeHTML(currentActiveSpot.plate || '--')}</strong></div>
+                    <div class="receipt-row"><span>ఇన్ (In):</span> <span>${entryDateStr}</span></div>
+                    <div class="receipt-line"></div>
+                    <div style="text-align:center; font-size:11px; margin-top:5px; font-weight:bold;">బయటకు వెళ్లేటప్పుడు ఈ రసీదు చూపించండి</div>
+                `;
+                document.getElementById('receipt-body').innerHTML = printHTML;
+                setTimeout(() => { window.print(); }, 500);
+                showToast(`స్పాట్ #${currentActiveSpot.id} చెక్-ఇన్ చేయబడింది. రసీదు ప్రింట్ అవుతోంది...`);
+            } else {
+                showToast(`స్పాట్ #${currentActiveSpot.id} (${escapeHTML(personName)}) చెక్-ఇన్ చేయబడింది.`);
+            }
+
+            if (!isTester) {
+                firebase.database().ref('/spots/' + (currentActiveSpot.id - 1)).set(currentActiveSpot);
+                firebase.database().ref('/globalStats').set(globalStats);
+            }
+
+            renderGrid();
+            updateLiveAdminDashboard();
+            closeModals();
+        }
+
+        function submitCheckout() {
+            if (!currentActiveSpot || !currentActiveSpot.isOccupied) return;
+
+            const method = document.getElementById('input-payment-method').value;
+            let cashReceived = 0; let changeDue = 0;
+
+            if (method === 'PASS') {
+                const phone = currentActiveSpot.phone;
+                if (!phone) return alert("కస్టమర్ ఫోన్ నంబర్ లేదు! పాస్ వాడాలంటే ఫోన్ నంబర్ తప్పనిసరి.");
+                if (!passes || !passes[phone]) return alert("ఈ నంబర్‌కి పాస్/వాలెట్ లేదు! దయచేసి ముందుగా పాస్ క్రియేట్ చేయండి.");
+                
+                let currentBal = parseFloat(passes[phone].balance || 0);
+                if (currentBal < currentFeeCalculation && currentFeeCalculation > 0) {
+                    return alert(`పాస్ బ్యాలెన్స్ సరిపోదు!\n\nబ్యాలెన్స్: ₹${currentBal.toFixed(2)}\nరుసుము: ₹${currentFeeCalculation.toFixed(2)}`);
+                }
+                
+                passes[phone].balance = currentBal - currentFeeCalculation;
+                passes[phone].used = parseFloat(passes[phone].used || 0) + currentFeeCalculation;
+                
+                currentShift.passUsage = parseFloat(currentShift.passUsage || 0) + currentFeeCalculation;
+                globalStats.totalPass = parseFloat(globalStats.totalPass || 0) + currentFeeCalculation;
+
+            } else {
+                if (method === 'CASH') {
+                    const cashInputStr = document.getElementById('input-cash-received').value.trim();
+                    if (cashInputStr === "") {
+                        cashReceived = currentFeeCalculation;
+                    } else {
+                        cashReceived = parseFloat(cashInputStr) || 0;
+                    }
+                    if (cashReceived < 0) return alert("నగదు మైనస్‌లో ఉండకూడదు.");
+                    if (cashReceived < currentFeeCalculation && currentFeeCalculation > 0) return alert(`సరిపోని నగదు! రుసుము ₹${currentFeeCalculation}`);
+                    changeDue = cashReceived - currentFeeCalculation;
+                }
+                
+                if (method === 'CASH') { 
+                    currentShift.cash = parseFloat(currentShift.cash || 0) + currentFeeCalculation; 
+                    globalStats.totalCash = parseFloat(globalStats.totalCash || 0) + currentFeeCalculation; 
+                } else { 
+                    currentShift.online = parseFloat(currentShift.online || 0) + currentFeeCalculation; 
+                    globalStats.totalOnline = parseFloat(globalStats.totalOnline || 0) + currentFeeCalculation; 
+                }
+            }
+
+            currentShift.handled = (currentShift.handled || 0) + 1;
+            globalStats.totalLeft = (globalStats.totalLeft || 0) + 1;
+            
+            saveSessionLocally();
+
+            document.body.className = 'print-mode-receipt';
+            document.getElementById('receipt-type').innerText = 'ఫైనల్ బిల్లు';
+
+            const entryDateStr = new Date(currentActiveSpot.entryTime).toLocaleTimeString('te-IN');
+            const exitDateStr = new Date().toLocaleTimeString('te-IN');
+            
+            let printHTML = `
+                <div class="receipt-row"><span>ఆపరేటర్ (Worker):</span> <span>${escapeHTML(currentShift.name)}</span></div>
+                <div class="receipt-row"><span>కస్టమర్ పేరు:</span> <strong>${escapeHTML(currentActiveSpot.personName || '--')}</strong></div>
+                <div class="receipt-row"><span>ఫోన్ నంబర్:</span> <strong>${escapeHTML(currentActiveSpot.phone || '--')}</strong></div>
+                <div class="receipt-line"></div>
+                <div class="receipt-row"><span>స్పాట్:</span> <strong>#${currentActiveSpot.id}</strong></div>
+                <div class="receipt-row"><span>బండి:</span> <strong>${escapeHTML(currentActiveSpot.plate || '--')}</strong></div>
+                <div class="receipt-row"><span>ఇన్ (In):</span> <span>${entryDateStr}</span></div>
+                <div class="receipt-row"><span>అవుట్ (Out):</span> <span>${exitDateStr}</span></div>
+                <div class="receipt-line"></div>
+                <div class="receipt-row"><span>రుసుము:</span> <strong>₹${currentFeeCalculation.toFixed(2)}</strong></div>
+            `;
+            
+            if (appliedDiscountAmount > 0) {
+                printHTML += `<div class="receipt-row" style="font-size:10px; color:#555;"><span>పాస్ డిస్కౌంట్:</span> <span>- ₹${appliedDiscountAmount.toFixed(2)}</span></div>`;
+            }
+
+            printHTML += `
+                <div class="receipt-row"><span>చెల్లింపు:</span> <span>${method === 'PASS' ? 'పాస్ బ్యాలెన్స్' : (method === 'CASH' ? 'నగదు' : 'ఆన్‌లైన్')}</span></div>
+            `;
+
+            if (method === 'CASH') {
+                printHTML += `<div class="receipt-row"><span>ఇచ్చిన నగదు:</span> <span>₹${cashReceived.toFixed(2)}</span></div>
+                              <div class="receipt-row"><span>తిరిగి ఇవ్వాలి:</span> <strong>₹${changeDue.toFixed(2)}</strong></div>`;
+            } else if (method === 'ONLINE') {
+                printHTML += `<div class="receipt-row"><span>UPI ID:</span> <span style="font-size:10px;">${escapeHTML(systemSettings.activeUpiId)}</span></div>`;
+            } else if (method === 'PASS') {
+                let currentBal = parseFloat(passes[spotPhone] ? passes[spotPhone].balance : 0);
+                printHTML += `<div class="receipt-row"><span>మిగిలిన బ్యాలెన్స్:</span> <strong>₹${currentBal.toFixed(2)}</strong></div>`;
+            }
+
+            document.getElementById('receipt-body').innerHTML = printHTML;
+
+            const spotId = currentActiveSpot.id;
+            const spotPhone = currentActiveSpot.phone; // Save before clearing
+            currentActiveSpot.isOccupied = false;
+            currentActiveSpot.personName = '';
+            currentActiveSpot.phone = ''; 
+            currentActiveSpot.plate = '';
+            currentActiveSpot.type = null;
+            currentActiveSpot.hasPass = false;
+            currentActiveSpot.entryTime = null;
+
+            if (!isTester) {
+                firebase.database().ref('/spots/' + (spotId - 1)).set(currentActiveSpot);
+                if(method === 'PASS') firebase.database().ref('/passes/' + spotPhone).set(passes[spotPhone]);
+                firebase.database().ref('/globalStats').set(globalStats);
+                
+                // ADMIN CHECKOUTS ARE NO LONGER HIDDEN FROM LIVE DASHBOARD 
+                if(currentShift.active && currentShift.role !== 'tester') {
+                    db.ref('/activeSessions/' + currentShift.username).set(currentShift).catch(e => console.error(e));
+                }
+            }
+
+            renderGrid();
+            updateLiveAdminDashboard();
+            closeModals();
+            
+            showToast(`స్పాట్ #${spotId} చెక్-అవుట్ చేయబడింది. రుసుము: ₹${currentFeeCalculation.toFixed(2)}`, false);
+            
+            setTimeout(() => { window.print(); }, 500);
+        }
+
+        function updateLiveCheckoutStats() {
+            if(!currentActiveSpot || !currentActiveSpot.isOccupied) return;
+            
+            const rawElapsedSeconds = Math.floor((Date.now() - currentActiveSpot.entryTime) / 1000); 
+            const elapsedSeconds = Math.max(0, rawElapsedSeconds); 
+            
+            const h = Math.floor(elapsedSeconds / 3600); const m = Math.floor((elapsedSeconds % 3600) / 60); const s = elapsedSeconds % 60;
+            document.getElementById('info-time').innerText = `${h}h ${m}m ${s}s`;
+            
+            const segmentRate = parseFloat(systemSettings.rates[currentActiveSpot.type]) || 0;
+            let rawFee = 0;
+
+            if (currentActiveSpot.type === "2") { 
+                let blocks = Math.max(1, Math.ceil(elapsedSeconds / (24 * 3600)));
+                rawFee = segmentRate * blocks;
+            } else { 
+                let blocks = Math.max(1, Math.ceil(elapsedSeconds / (12 * 3600)));
+                rawFee = segmentRate * blocks;
+            }
+
+            appliedDiscountAmount = 0;
+            if (currentActiveSpot.hasPass) {
+                const discountPct = parseFloat(systemSettings.passDiscount) || 0;
+                appliedDiscountAmount = rawFee * (discountPct / 100);
+                rawFee = rawFee - appliedDiscountAmount;
+            }
+            
+            currentFeeCalculation = parseFloat(rawFee.toFixed(2));
+
+            document.getElementById('info-fee').innerText = `₹${currentFeeCalculation.toFixed(2)}`;
+            document.getElementById('cash-due-display').innerText = `₹${currentFeeCalculation.toFixed(2)}`;
+
+            const discountMsgElement = document.getElementById('info-discount-msg');
+            if (currentActiveSpot.hasPass && appliedDiscountAmount > 0) {
+                discountMsgElement.innerText = `(${systemSettings.passDiscount}% డిస్కౌంట్ వర్తించింది: -₹${appliedDiscountAmount.toFixed(2)})`;
+                discountMsgElement.style.display = 'block';
+            } else {
+                discountMsgElement.style.display = 'none';
+            }
+        }
+
+        function showWorkerStats() {
+            if(!currentShift || !currentShift.active) return;
+            document.getElementById('my-shift-name').innerText = escapeHTML(currentShift.name) || "--";
+            document.getElementById('my-shift-login').innerText = currentShift.loginTime ? new Date(currentShift.loginTime).toLocaleTimeString('te-IN') : "--";
+            document.getElementById('my-shift-handled').innerText = currentShift.handled || 0;
+            document.getElementById('my-shift-cash').innerText = parseFloat(currentShift.cash || 0).toFixed(2);
+            document.getElementById('my-shift-online').innerText = parseFloat(currentShift.online || 0).toFixed(2);
+            document.getElementById('my-shift-pass').innerText = parseFloat(currentShift.passUsage || 0).toFixed(2);
+            
+            let subTotal = parseFloat(currentShift.cash || 0) + parseFloat(currentShift.online || 0);
+            document.getElementById('my-shift-total').innerText = subTotal.toFixed(2);
+            
+            document.getElementById('worker-stats-modal').style.display = 'flex';
+        }
+
+        function handleShiftClick() {
+            if (currentShift && currentShift.active) {
+                document.getElementById('shift-name').innerText = escapeHTML(currentShift.name) || "--";
+                document.getElementById('shift-handled').innerText = currentShift.handled || 0;
+                document.getElementById('shift-cash').innerText = parseFloat(currentShift.cash || 0).toFixed(2);
+                document.getElementById('shift-online').innerText = parseFloat(currentShift.online || 0).toFixed(2);
+                document.getElementById('shift-pass').innerText = parseFloat(currentShift.passUsage || 0).toFixed(2);
+                
+                let subTotal = parseFloat(currentShift.cash || 0) + parseFloat(currentShift.online || 0);
+                document.getElementById('shift-total').innerText = subTotal.toFixed(2);
+                
+                let spotsArray = Array.isArray(spots) ? spots : Object.values(spots || {});
+                let leftOver = spotsArray.filter(s => s && s.isOccupied).length;
+                document.getElementById('shift-left').innerText = leftOver;
+
+                document.getElementById('end-shift-modal').style.display = 'flex';
+            } else {
+                document.getElementById('login-user').value = '';
+                document.getElementById('login-pass').value = '';
+                document.getElementById('login-modal').style.display = 'flex'; 
+            }
+        }
+
+        function printShiftSummary() {
+            document.body.className = 'print-mode-receipt';
+            document.getElementById('receipt-type').innerText = 'షిఫ్ట్ ముగింపు రిపోర్ట్';
+            
+            let total = parseFloat(currentShift.cash || 0) + parseFloat(currentShift.online || 0);
+            
+            let spotsArray = Array.isArray(spots) ? spots : Object.values(spots || {});
+            let leftOver = spotsArray.filter(s => s && s.isOccupied).length;
+
+            const loginDateObj = currentShift.loginTime ? new Date(currentShift.loginTime) : new Date();
+            const logoutDateObj = new Date();
+            const dateStr = loginDateObj.toLocaleDateString('te-IN');
+            const loginStr = loginDateObj.toLocaleTimeString('te-IN');
+            const logoutStr = logoutDateObj.toLocaleTimeString('te-IN');
+
+            let printHTML = `
+                <div class="receipt-row"><span>తేదీ (Date):</span> <span>${dateStr}</span></div>
+                <div class="receipt-row"><span>ఆపరేటర్:</span> <span>${escapeHTML(currentShift.name) || '--'}</span></div>
+                <div class="receipt-row"><span>లాగిన్ (In):</span> <span>${loginStr}</span></div>
+                <div class="receipt-row"><span>లాగౌట్ (Out):</span> <span>${logoutStr}</span></div>
+                <div class="receipt-line"></div>
+                <div class="receipt-row"><span>పంపిన వాహనాలు:</span> <strong>${currentShift.handled || 0}</strong></div>
+                <div class="receipt-row"><span>లోపల మిగిలినవి:</span> <strong>${leftOver}</strong></div>
+                <div class="receipt-line"></div>
+                <div class="receipt-row"><span>నగదు (Cash):</span> <span>₹${parseFloat(currentShift.cash || 0).toFixed(2)}</span></div>
+                <div class="receipt-row"><span>ఆన్‌లైన్ (UPI):</span> <span>₹${parseFloat(currentShift.online || 0).toFixed(2)}</span></div>
+                <div class="receipt-row" style="font-size:14px; margin-top:5px;"><span>సబ్-టోటల్:</span> <strong>₹${total.toFixed(2)}</strong></div>
+                <div class="receipt-row" style="font-size:10px; margin-top:5px; color:#555;"><span>పాస్ ద్వారా వాడినది:</span> <span>₹${parseFloat(currentShift.passUsage || 0).toFixed(2)}</span></div>
+            `;
+            document.getElementById('receipt-body').innerHTML = printHTML;
+            setTimeout(() => { window.print(); }, 500);
+        }
+
+        // 🚨 CRITICAL FIX: ADMINS CAN NOW SAVE SHIFTS SECURELY 
+        async function executeSecureLogout(isShiftEnd = false) {
+            try {
+                let alertMsg = "";
+                let finalName = currentShift.name || "Operator";
+                let finalHandled = currentShift.handled || 0;
+                let c = parseFloat(currentShift.cash) || 0;
+                let o = parseFloat(currentShift.online) || 0;
+                let finalSubTotal = c + o;
+                let p = parseFloat(currentShift.passUsage) || 0;
+
+                let usernameToRemove = currentShift.username;
+                let wasTester = isTester;
+
+                // Removed currentShift.role !== 'admin' - ADMIN SHIFTS ARE NOW RECORDED!
+                if (isShiftEnd && currentShift.role !== 'tester') {
+                    let spotsArray = Array.isArray(spots) ? spots : Object.values(spots || {});
+                    let occupiedCount = spotsArray.filter(s => s && s.isOccupied).length;
+
+                    if (!shiftHistory) shiftHistory = [];
+                    else if (!Array.isArray(shiftHistory)) shiftHistory = Object.values(shiftHistory);
+
+                    shiftHistory.push({ 
+                        name: finalName, 
+                        loginTime: currentShift.loginTime || Date.now(),
+                        logoutTime: Date.now(), 
+                        handled: finalHandled, 
+                        leftInLot: occupiedCount,
+                        cash: c, 
+                        online: o,
+                        passUsage: p
+                    });
+                    
+                    alertMsg = `✅ షిఫ్ట్ విజయవంతంగా ముగిసింది!\n\nఆపరేటర్: ${finalName}\nపంపిన వాహనాలు: ${finalHandled}\nసబ్-టోటల్: ₹${finalSubTotal.toFixed(2)}`;
+                } else {
+                    alertMsg = "లాగౌట్ విజయవంతంగా పూర్తయింది.";
+                }
+
+                if (!wasTester) {
+                    document.getElementById('cloud-loader').innerHTML = "<div style='font-size: 40px; margin-bottom: 10px;'>☁️</div>క్లౌడ్‌లో సేవ్ అవుతోంది. దయచేసి వేచి ఉండండి...";
+                    document.getElementById('cloud-loader').style.display = 'flex';
+
+                    let cleanSpots = Array.isArray(spots) ? spots : Object.values(spots || {});
+                    let cleanShiftHistory = Array.isArray(shiftHistory) ? shiftHistory : Object.values(shiftHistory || []);
+
+                    await db.ref('/').update({ 
+                        settings: systemSettings || {}, 
+                        spots: cleanSpots, 
+                        globalStats: globalStats || { totalEntered: 0, totalLeft: 0, totalCash: 0, totalOnline: 0, totalPass: 0 }, 
+                        shiftHistory: cleanShiftHistory,
+                        passes: passes || {},
+                        customerDB: customerDB || {}
+                    });
+
+                    if (usernameToRemove) {
+                        await db.ref('/activeSessions/' + usernameToRemove).remove();
+                    }
+                }
+
+                currentShift = { active: false, username: "", name: "", role: "", loginTime: null, logoutTime: null, handled: 0, cash: 0, online: 0, passUsage: 0 };
+                clearLocalSession();
+                isTester = false;
+
+                alert(alertMsg);
+                location.reload();
+
+            } catch(e) {
+                console.error("Critical Logout Error:", e);
+                alert("డేటాబేస్‌లో సేవ్ చేయడంలో ఎర్రర్ వచ్చింది. ఇంటర్నెట్ కనెక్షన్ చెక్ చేయండి.");
+                document.getElementById('cloud-loader').style.display = 'none';
+            }
+        }
+
+        function adminDirectLogout() {
+            executeSecureLogout(false);
+        }
+
+        function attemptLogin() {
+            const user = document.getElementById('login-user').value.toLowerCase().trim();
+            const pass = document.getElementById('login-pass').value;
+
+            if (user === 'test' && pass === '143') {
+                isTester = true;
+                currentShift = { active: true, username: "test", name: "Tester", role: "tester", loginTime: Date.now(), handled: 0, cash: 0, online: 0, passUsage: 0 };
+                saveSessionLocally();
+                closeModals();
+                updateShiftUI();
+                renderGrid();
+                showToast(`టెస్టింగ్ మోడ్ యాక్టివేట్ అయ్యింది`);
+                return;
+            }
+
+            if (systemSettings.users[user] && systemSettings.users[user].pass === pass) {
+                currentShift = { active: true, username: user, name: systemSettings.users[user].name, role: systemSettings.users[user].role, loginTime: Date.now(), handled: 0, cash: 0, online: 0, passUsage: 0 };
+                
+                saveSessionLocally();
+                
+                // Removed currentShift.role !== 'admin'
+                if (currentShift.role !== 'tester') {
+                    db.ref('/activeSessions/' + currentShift.username).onDisconnect().remove();
+                }
+
+                pushToCloud(); 
+                closeModals();
+                updateShiftUI();
+                renderGrid();
+                showToast(`లాగిన్ విజయవంతమైంది. స్వాగతం ${escapeHTML(currentShift.name)}`);
+            } else { alert("యూజర్ నేమ్ లేదా పాస్‌వర్డ్ తప్పు."); }
+        }
+
+        function updateShiftUI() {
+            const badge = document.getElementById('operator-badge');
+            const btn = document.getElementById('btn-shift-action');
+            const statBtn = document.getElementById('btn-worker-stats');
+            const passBtn = document.getElementById('btn-pass-manage');
+
+            document.querySelectorAll('.admin-only').forEach(b => {
+                b.style.display = (currentShift.role === "admin" || currentShift.role === "tester") ? "inline-block" : "none";
+            });
+            document.querySelectorAll('.tester-only').forEach(b => b.style.display = currentShift.role === "tester" ? "block" : "none");
+            
+            if (currentShift.active) {
+                const color = currentShift.role === "admin" ? "var(--admin-color)" : (currentShift.role === "tester" ? "#ca8a04" : "var(--open-color)");
+                badge.innerHTML = `<span style="color:${color}">🟢 ఆపరేటర్: ${escapeHTML(currentShift.name).toUpperCase()}</span>`;
+                
+                if (currentShift.role === "admin" || currentShift.role === "tester") {
+                    btn.innerHTML = "⏹ లాగౌట్";
+                } else {
+                    btn.innerHTML = "⏹ షిఫ్ట్ ముగించు";
+                }
+                
+                btn.style.backgroundColor = "var(--occupied-color)";
+                statBtn.style.display = "inline-block";
+                passBtn.style.display = "inline-block"; 
+            } else {
+                badge.innerHTML = `<span style="color:var(--occupied-color)">🔴 సిస్టమ్ లాక్ చేయబడింది. దయచేసి లాగిన్ అవ్వండి.</span>`;
+                btn.innerHTML = "▶ సెక్యూర్ లాగిన్"; btn.style.backgroundColor = "var(--shift-color)";
+                statBtn.style.display = "none";
+                passBtn.style.display = "none";
+            }
+            updateLiveAdminDashboard();
+        }
+
+        function openAdminSettings() {
+            if(currentShift.role !== "admin" && currentShift.role !== "tester") return;
+            document.getElementById('rate-2').value = parseFloat(systemSettings.rates["2"]) || 0;
+            document.getElementById('rate-3').value = parseFloat(systemSettings.rates["3"]) || 0;
+            document.getElementById('rate-4').value = parseFloat(systemSettings.rates["4"]) || 0;
+            document.getElementById('rate-5').value = parseFloat(systemSettings.rates["5"]) || 0;
+            document.getElementById('admin-pass-discount').value = parseFloat(systemSettings.passDiscount) || 0;
+            document.getElementById('admin-upi-id').value = systemSettings.activeUpiId || "";
+            
+            if(systemSettings.adminPhone) {
+                document.getElementById('admin-wa-phone').value = systemSettings.adminPhone;
+            } else {
+                document.getElementById('admin-wa-phone').value = "";
+            }
+            
+            renderAdminUserList();
+            document.getElementById('admin-settings-modal').style.display = 'flex';
+        }
+
+        function saveSystemSettings() {
+            if(currentShift.role !== "admin" && currentShift.role !== "tester") return;
+            systemSettings.rates["2"] = Math.max(0, parseFloat(document.getElementById('rate-2').value) || 0);
+            systemSettings.rates["3"] = Math.max(0, parseFloat(document.getElementById('rate-3').value) || 0);
+            systemSettings.rates["4"] = Math.max(0, parseFloat(document.getElementById('rate-4').value) || 0);
+            systemSettings.rates["5"] = Math.max(0, parseFloat(document.getElementById('rate-5').value) || 0);
+            systemSettings.passDiscount = Math.max(0, parseFloat(document.getElementById('admin-pass-discount').value) || 0);
+            
+            const upi = document.getElementById('admin-upi-id').value.trim();
+            if(upi) systemSettings.activeUpiId = upi;
+
+            const waPhone = document.getElementById('admin-wa-phone').value.trim();
+            systemSettings.adminPhone = waPhone;
+
+            firebase.database().ref('/settings').set(systemSettings).then(() => {
+                showToast("సెట్టింగ్స్ క్లౌడ్‌లో సేవ్ చేయబడ్డాయి.");
+            });
+        }
+
+        function renderAdminUserList() {
+            const list = document.getElementById('admin-user-list');
+            list.innerHTML = '';
+            for (const [username, details] of Object.entries(systemSettings.users)) {
+                if (username === 'admin') continue; 
+                list.innerHTML += `
+                    <div class="user-item">
+                        <span><strong>${escapeHTML(username)}</strong> (పాస్‌వర్డ్: ${escapeHTML(details.pass)})</span>
+                        <button onclick="deleteUser('${escapeHTML(username)}')">డిలీట్</button>
+                    </div>
+                `;
+            }
+        }
+
+        function addNewUser() {
+            const username = document.getElementById('new-user-name').value.toLowerCase().trim();
+            const pass = document.getElementById('new-user-pass').value.trim();
+            if(!username || !pass) return alert("దయచేసి యూజర్ నేమ్ మరియు పాస్‌వర్డ్ ఎంటర్ చేయండి.");
+            if(systemSettings.users[username]) return alert("యూజర్ నేమ్ ఇదివరకే ఉంది!");
+
+            systemSettings.users[username] = { pass: pass, role: "operator", name: username.charAt(0).toUpperCase() + username.slice(1) };
+            document.getElementById('new-user-name').value = '';
+            document.getElementById('new-user-pass').value = '';
+            
+            if(currentShift.role === 'tester') {
+                firebase.database().ref('/settings').set(systemSettings);
+            } else {
+                pushToCloud();
+            }
+            renderAdminUserList();
+            showToast(`కొత్త ఆపరేటర్ యాడ్ చేయబడ్డారు.`);
+        }
+
+        function deleteUser(username) {
+            if(confirm(`${username} ను కచ్చితంగా డిలీట్ చేయాలనుకుంటున్నారా?`)) {
+                delete systemSettings.users[username];
+                if(currentShift.role === 'tester') {
+                    firebase.database().ref('/settings').set(systemSettings);
+                } else {
+                    pushToCloud();
+                }
+                renderAdminUserList();
+                showToast(`ఆపరేటర్ తొలగించబడ్డారు.`);
+            }
+        }
+
+        function openReport() {
+            if(currentShift.role !== "admin" && currentShift.role !== "tester") return;
+            
+            const now = new Date();
+            const firstDay = getLocalDateString(new Date(now.getFullYear(), now.getMonth(), 1));
+            const today = getLocalDateString(now);
+            
+            document.getElementById('rep-start-date').value = firstDay;
+            document.getElementById('rep-end-date').value = today;
+            
+            calculateReport();
+            document.getElementById('report-modal').style.display = 'flex';
+        }
+
+        function setQuickDate(type) {
+            const now = new Date();
+            let start, end = getLocalDateString(now);
+
+            if (type === 'today') {
+                start = end;
+            } else if (type === 'week') {
+                const d = new Date();
+                d.setDate(d.getDate() - d.getDay()); 
+                start = getLocalDateString(d);
+            } else if(type === 'month') {
+                const d = new Date();
+                d.setDate(1);
+                start = getLocalDateString(d);
+            }
+            
+            document.getElementById('rep-start-date').value = start;
+            document.getElementById('rep-end-date').value = end;
+            calculateReport();
+        }
+
+        // 🚨 ADMIN LIVE SHIFTS ARE NOW FETCHED IN THE REPORTS 
+        function calculateReport() {
+            const startVal = document.getElementById('rep-start-date').value;
+            const endVal = document.getElementById('rep-end-date').value;
+            
+            if(!startVal || !endVal) return alert("దయచేసి రెండు తేదీలను ఎంచుకోండి.");
+
+            let sParts = startVal.split('-');
+            let eParts = endVal.split('-');
+            
+            const startTs = new Date(sParts[0], sParts[1]-1, sParts[2], 0, 0, 0, 0).getTime();
+            const endTs = new Date(eParts[0], eParts[1]-1, eParts[2], 23, 59, 59, 999).getTime();
+
+            let calcHandled = 0; let calcCash = 0; let calcOnline = 0; let calcPass = 0;
+            let filteredShifts = [];
+            let groupedData = {}; 
+
+            let historyArray = Array.isArray(shiftHistory) ? shiftHistory : Object.values(shiftHistory || {});
+
+            historyArray.forEach(shift => {
+                if(shift && shift.logoutTime >= startTs && shift.logoutTime <= endTs) {
+                    processShiftForReport(shift, shift.logoutTime, filteredShifts, groupedData);
+                    calcHandled += (shift.handled || 0);
+                    calcCash += parseFloat(shift.cash || 0);
+                    calcOnline += parseFloat(shift.online || 0);
+                    calcPass += parseFloat(shift.passUsage || 0);
+                }
+            });
+
+            let allActive = [];
+            if (activeSessions) {
+                Object.values(activeSessions).forEach(session => {
+                    if(session && session.username !== currentShift.username) allActive.push(session);
+                });
+            }
+            if (currentShift && currentShift.active && currentShift.role !== 'tester') {
+                allActive.push(currentShift); // Admin pushes their own data here now!
+            }
+
+            allActive.forEach(shift => {
+                let effTime = shift.loginTime || Date.now(); 
+                if(effTime <= endTs && effTime >= startTs) {
+                    let livePseudoShift = {
+                        name: shift.name + " (లైవ్)", 
+                        loginTime: shift.loginTime,
+                        logoutTime: Date.now(), 
+                        handled: shift.handled,
+                        cash: shift.cash,
+                        online: shift.online,
+                        passUsage: shift.passUsage
+                    };
+                    processShiftForReport(livePseudoShift, livePseudoShift.logoutTime, filteredShifts, groupedData);
+                    calcHandled += (shift.handled || 0);
+                    calcCash += parseFloat(shift.cash || 0);
+                    calcOnline += parseFloat(shift.online || 0);
+                    calcPass += parseFloat(shift.passUsage || 0);
+                }
+            });
+
+            document.getElementById('rep-handled').innerText = calcHandled;
+            document.getElementById('rep-cash').innerText = calcCash.toFixed(2);
+            document.getElementById('rep-online').innerText = calcOnline.toFixed(2);
+            document.getElementById('rep-pass').innerText = calcPass.toFixed(2);
+            document.getElementById('rep-total').innerText = (calcCash + calcOnline).toFixed(2);
+
+            currentReportData = {
+                startDate: startVal,
+                endDate: endVal,
+                handled: calcHandled,
+                cash: calcCash,
+                online: calcOnline,
+                passUsage: calcPass,
+                shifts: filteredShifts,
+                grouped: groupedData 
+            };
+        }
+
+        function processShiftForReport(shift, timeAnchor, filteredShifts, groupedData) {
+            filteredShifts.push(shift);
+            let d = new Date(timeAnchor);
+            let dateStr = getLocalDateString(d); 
+            let isAM = d.getHours() < 12;
+            let period = isAM ? 'ఉదయం షిఫ్ట్ (00:00 - 11:59 AM)' : 'రాత్రి షిఫ్ట్ (12:00 PM - 23:59)';
+
+            if (!groupedData[dateStr]) {
+                groupedData[dateStr] = {
+                    'ఉదయం షిఫ్ట్ (00:00 - 11:59 AM)': { handled: 0, cash: 0, online: 0, passUsage: 0 },
+                    'రాత్రి షిఫ్ట్ (12:00 PM - 23:59)': { handled: 0, cash: 0, online: 0, passUsage: 0 }
+                };
+            }
+
+            groupedData[dateStr][period].handled += (shift.handled || 0);
+            groupedData[dateStr][period].cash += parseFloat(shift.cash || 0);
+            groupedData[dateStr][period].online += parseFloat(shift.online || 0);
+            groupedData[dateStr][period].passUsage += parseFloat(shift.passUsage || 0);
+        }
+
+        function exportToExcel() {
+            if (!currentReportData || !currentReportData.grouped || Object.keys(currentReportData.grouped).length === 0) {
+                alert("డేటా లేదు. ముందుగా తేదీలు సెలెక్ట్ చేసి సెర్చ్ నొక్కండి.");
+                return;
+            }
+
+            let csvContent = "data:text/csv;charset=utf-8,\uFEFF"; 
+            csvContent += "తేదీ (Date),సమయం (12-Hr Shift),వాహనాలు (Handled),నగదు (Cash - Rs),ఆన్‌లైన్ (Online - Rs),పాస్ (Pass Usage - Rs),మొత్తం (Total - Rs)\n";
+
+            const dates = Object.keys(currentReportData.grouped).sort();
+            dates.forEach(date => {
+                const periods = ['ఉదయం షిఫ్ట్ (00:00 - 11:59 AM)', 'రాత్రి షిఫ్ట్ (12:00 PM - 23:59)'];
+                periods.forEach(period => {
+                    let d = currentReportData.grouped[date][period];
+                    if (d.handled > 0 || d.cash > 0 || d.online > 0 || d.passUsage > 0) {
+                        let total = d.cash + d.online;
+                        let formattedDate = new Date(date).toLocaleDateString('te-IN');
+                        csvContent += `"${formattedDate}","${period}",${d.handled},${d.cash.toFixed(2)},${d.online.toFixed(2)},${d.passUsage.toFixed(2)},${total.toFixed(2)}\n`;
+                    }
+                });
+            });
+
+            const encodedUri = encodeURI(csvContent);
+            const link = document.createElement("a");
+            link.setAttribute("href", encodedUri);
+            link.setAttribute("download", `Sri_Venkateswara_Parking_Report_${currentReportData.startDate}_to_${currentReportData.endDate}.csv`);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        function printAdminReport() {
+            document.body.className = 'print-mode-report';
+
+            document.getElementById('a4-generation-details').innerText = `ప్రింట్ చేసిన సమయం: ${new Date().toLocaleString('te-IN')} (ఆపరేటర్: ${escapeHTML(currentShift.name)})`;
+            document.getElementById('a4-period-dates').innerText = `${currentReportData.startDate} నుండి ${currentReportData.endDate} వరకు`;
+            
+            document.getElementById('a4-handled').innerText = currentReportData.handled;
+            document.getElementById('a4-cash').innerText = currentReportData.cash.toFixed(2);
+            document.getElementById('a4-online').innerText = currentReportData.online.toFixed(2);
+            document.getElementById('a4-pass').innerText = currentReportData.passUsage.toFixed(2);
+            document.getElementById('a4-total').innerText = (currentReportData.cash + currentReportData.online).toFixed(2);
+
+            const tbody = document.getElementById('a4-ledger-body');
+            tbody.innerHTML = '';
+            
+            if (!currentReportData.grouped || Object.keys(currentReportData.grouped).length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;">ఈ తేదీల్లో ఎలాంటి సమాచారం లేదు.</td></tr>';
+            } else {
+                const dates = Object.keys(currentReportData.grouped).sort();
+                dates.forEach(date => {
+                    const periods = ['ఉదయం షిఫ్ట్ (00:00 - 11:59 AM)', 'రాత్రి షిఫ్ట్ (12:00 PM - 23:59)'];
+                    let formattedDate = new Date(date).toLocaleDateString('te-IN');
+                    
+                    periods.forEach(period => {
+                        let d = currentReportData.grouped[date][period];
+                        if(d.handled > 0 || d.cash > 0 || d.online > 0 || d.passUsage > 0) {
+                            tbody.innerHTML += `
+                                <tr>
+                                    <td><strong>${formattedDate}</strong></td>
+                                    <td>${period}</td>
+                                    <td>${d.handled}</td>
+                                    <td>₹${d.cash.toFixed(2)}</td>
+                                    <td>₹${d.online.toFixed(2)}</td>
+                                </tr>
+                            `;
+                        }
+                    });
+                });
+            }
+            
+            setTimeout(() => { window.print(); }, 500);
+        }
+
+        function closeModals() {
+            document.querySelectorAll('.modal-overlay').forEach(m => m.style.display = 'none');
+            if(timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+            currentActiveSpot = null;
+        }
+
+        setInterval(() => {
+            if(currentShift && currentShift.active && (currentShift.role === 'admin' || currentShift.role === 'tester')) {
+                updateLiveAdminDashboard();
+            }
+        }, 30000);
+
+    </script>
+</body>
+</html>
