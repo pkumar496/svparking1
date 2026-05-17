@@ -197,10 +197,11 @@
             <thead>
                 <tr>
                     <th>తేదీ (Date)</th>
-                    <th>సమయం (12-Hr Shift)</th>
+                    <th>ఆపరేటర్ (Operator)</th>
                     <th>వాహనాలు</th>
                     <th>నగదు (₹)</th>
                     <th>ఆన్‌లైన్ (₹)</th>
+                    <th>పాస్ (₹)</th>
                 </tr>
             </thead>
             <tbody id="a4-ledger-body">
@@ -585,7 +586,9 @@
 
     <div class="modal-overlay no-print" id="report-modal">
         <div class="modal-box large">
-            <h2 style="color: var(--admin-color)">📊 ఆదాయ నివేదిక (డే-వైజ్ & 12 Hrs)</h2>
+            <h2 style="color: var(--admin-color)">📊 ఆదాయ నివేదిక</h2>
+
+            <!-- Date filter -->
             <div class="admin-section" style="background: #f8fafc;">
                 <h3 style="margin-bottom: 10px;">📅 తేదీని ఎంచుకోండి</h3>
                 <div class="date-inputs" style="display: flex; gap: 10px; flex-wrap: wrap;">
@@ -598,17 +601,59 @@
                     <button class="btn btn-outline" style="margin-top:0; flex:1; min-width: 80px; padding: 8px;" onclick="setQuickDate('week')">ఈ వారం</button>
                     <button class="btn btn-outline" style="margin-top:0; flex:1; min-width: 80px; padding: 8px;" onclick="setQuickDate('month')">ఈ నెల</button>
                 </div>
+                <div id="rep-db-status" style="font-size:12px; color:#64748b; margin-top:8px; text-align:center;"></div>
             </div>
-            <div class="live-stats">
+
+            <!-- Summary totals -->
+            <div class="live-stats" id="rep-summary-box">
+                <div style="font-size:13px; color:#64748b; margin-bottom:8px; text-align:right;" id="rep-source-label"></div>
                 <div class="report-row"><span>పార్క్ చేసిన వాహనాలు:</span> <strong id="rep-handled">0</strong></div>
                 <div class="receipt-line" style="border-bottom: 1px solid #ccc; margin: 10px 0;"></div>
-                <div class="report-row"><span>నగదు:</span> <strong>₹<span id="rep-cash">0.00</span></strong></div>
+                <div class="report-row"><span>నగదు (Cash):</span> <strong style="color:var(--open-color);">₹<span id="rep-cash">0.00</span></strong></div>
                 <div class="report-row"><span>ఆన్‌లైన్ (UPI):</span> <strong style="color: var(--accent-color);">₹<span id="rep-online">0.00</span></strong></div>
                 <div class="report-row" style="color: var(--shift-color);"><span>పాస్ ద్వారా వాడినది:</span> <strong>₹<span id="rep-pass">0.00</span></strong></div>
-                <div class="report-row" style="margin-top: 10px; font-size: 18px; color: var(--admin-color);"><span>మొత్తం (నగదు + ఆన్‌లైన్):</span> <strong>₹<span id="rep-total">0.00</span></strong></div>
+                <div class="report-row" style="margin-top: 10px; font-size: 18px; color: var(--admin-color); border-top: 2px solid #e2e8f0; padding-top: 10px;">
+                    <span>మొత్తం (నగదు + ఆన్‌లైన్):</span> <strong>₹<span id="rep-total">0.00</span></strong>
+                </div>
             </div>
-            <div style="display:flex; gap:10px; flex-direction: column;">
-                <button class="btn btn-blue" onclick="exportToExcel()">📊 ఎక్సెల్ కు ఎగుమతి చేయి (Export Excel)</button>
+
+            <!-- Day-wise breakdown table -->
+            <div class="admin-section" style="padding: 0; overflow: hidden;">
+                <h3 style="padding: 12px 15px; margin:0; background:#f8fafc; border-bottom:1px solid #e2e8f0;">📅 రోజువారీ వివరాలు (Firebase నుండి)</h3>
+                <div style="overflow-x:auto; max-height: 320px; overflow-y:auto;">
+                    <table style="width:100%; border-collapse:collapse; font-size:13px;">
+                        <thead style="position:sticky; top:0; z-index:1;">
+                            <tr style="background:#1e293b; color:white;">
+                                <th style="padding:10px 8px; text-align:left; white-space:nowrap;">తేదీ</th>
+                                <th style="padding:10px 8px; text-align:left; white-space:nowrap;">ఆపరేటర్</th>
+                                <th style="padding:10px 8px; text-align:center; white-space:nowrap;">వాహనాలు</th>
+                                <th style="padding:10px 8px; text-align:right; white-space:nowrap;">నగదు ₹</th>
+                                <th style="padding:10px 8px; text-align:right; white-space:nowrap;">ఆన్‌లైన్ ₹</th>
+                                <th style="padding:10px 8px; text-align:right; white-space:nowrap;">పాస్ ₹</th>
+                                <th style="padding:10px 8px; text-align:right; white-space:nowrap;">మొత్తం ₹</th>
+                                <th style="padding:10px 8px; text-align:center; white-space:nowrap;">స్థితి</th>
+                            </tr>
+                        </thead>
+                        <tbody id="rep-daywise-body">
+                            <tr><td colspan="8" style="text-align:center; padding:20px; color:#94a3b8;">తేదీలు ఎంచుకుని వెతుకు నొక్కండి</td></tr>
+                        </tbody>
+                        <tfoot id="rep-daywise-foot" style="display:none;">
+                            <tr style="background:#f1f5f9; font-weight:bold; border-top:2px solid #cbd5e1;">
+                                <td colspan="2" style="padding:10px 8px;">మొత్తం</td>
+                                <td style="padding:10px 8px; text-align:center;" id="foot-handled">0</td>
+                                <td style="padding:10px 8px; text-align:right; color:var(--open-color);" id="foot-cash">0.00</td>
+                                <td style="padding:10px 8px; text-align:right; color:var(--accent-color);" id="foot-online">0.00</td>
+                                <td style="padding:10px 8px; text-align:right; color:var(--shift-color);" id="foot-pass">0.00</td>
+                                <td style="padding:10px 8px; text-align:right; color:var(--admin-color); font-size:15px;" id="foot-total">0.00</td>
+                                <td></td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            </div>
+
+            <div style="display:flex; gap:10px; flex-direction: column; margin-top:5px;">
+                <button class="btn btn-blue" onclick="exportToExcel()">📊 ఎక్సెల్ కు ఎగుమతి చేయి</button>
                 <button class="btn btn-green" style="margin-top: 0;" onclick="printAdminReport()">🖨️ వివరమైన రిపోర్ట్ ప్రింట్ చేయి</button>
                 <button class="btn btn-gray" style="margin-top: 0;" onclick="closeModals()">మూసివేయి</button>
             </div>
@@ -743,15 +788,20 @@
             }
         }
 
-        function sendWhatsAppReceipt(phone, messageText) {
-            let cleanPhone = phone.replace(/\D/g, ''); 
+        function sendWhatsAppReceipt(phone, messageText, afterCallback) {
+            let cleanPhone = phone.replace(/\D/g, '');
             if (cleanPhone.length === 10) { cleanPhone = '91' + cleanPhone; }
             if (cleanPhone.length < 10) {
                 alert("దయచేసి సరైన 10 అంకెల ఫోన్ నంబర్‌ను ఎంటర్ చేయండి. వాట్సాప్ మెసేజ్ రద్దు చేయబడింది.");
                 return;
             }
             const text = encodeURIComponent(messageText);
-            window.open(`https://wa.me/${cleanPhone}?text=${text}`, '_blank');
+            // whatsapp:// opens the app directly without opening a browser tab
+            window.location.href = 'whatsapp://send?phone=' + cleanPhone + '&text=' + text;
+            // After the user sends and returns from WhatsApp, fire the callback
+            if (typeof afterCallback === 'function') {
+                setTimeout(afterCallback, 2500);
+            }
         }
 
         function sendWhatsAppShiftReport() {
@@ -760,25 +810,31 @@
                 alert("అడ్మిన్ సెట్టింగ్స్‌లో ముందుగా ఓనర్ వాట్సాప్ నంబర్‌ను సెట్ చేయండి!");
                 return;
             }
-            
+
             let total = parseFloat(currentShift.cash || 0) + parseFloat(currentShift.online || 0);
-            
-            let msg = `*శ్రీ వెంకటేశ్వర పార్కింగ్ - షిఫ్ట్ రిపోర్ట్* 📊\n\n`;
-            msg += `👤 ఆపరేటర్: ${currentShift.name}\n`;
-            msg += `🕒 ముగింపు: ${new Date().toLocaleTimeString('te-IN')}\n\n`;
-            msg += `🚗 పంపిన బండ్లు: ${currentShift.handled || 0}\n`;
-            msg += `💵 నగదు (Cash): ₹${parseFloat(currentShift.cash || 0).toFixed(2)}\n`;
-            msg += `📱 ఆన్‌లైన్ (UPI): ₹${parseFloat(currentShift.online || 0).toFixed(2)}\n`;
-            msg += `💰 *మొత్తం (Total): ₹${total.toFixed(2)}*\n\n`;
-            
+
+            let msg = '*శ్రీ వెంకటేశ్వర పార్కింగ్ - షిఫ్ట్ రిపోర్ట్* 📊\n\n';
+            msg += '👤 ఆపరేటర్: ' + currentShift.name + '\n';
+            msg += '🕒 ముగింపు: ' + new Date().toLocaleTimeString('te-IN') + '\n\n';
+            msg += '🚗 పంపిన బండ్లు: ' + (currentShift.handled || 0) + '\n';
+            msg += '💵 నగదు (Cash): ₹' + parseFloat(currentShift.cash || 0).toFixed(2) + '\n';
+            msg += '📱 ఆన్‌లైన్ (UPI): ₹' + parseFloat(currentShift.online || 0).toFixed(2) + '\n';
+            msg += '💰 *మొత్తం (Total): ₹' + total.toFixed(2) + '*\n\n';
+
             if (currentShift.passUsage > 0) {
-                msg += `🎟️ పాస్ వాడకం: ₹${parseFloat(currentShift.passUsage || 0).toFixed(2)}\n`;
+                msg += '🎟️ పాస్ వాడకం: ₹' + parseFloat(currentShift.passUsage || 0).toFixed(2) + '\n';
             }
 
             let cleanPhone = adminPhone.replace(/\D/g, '');
             if (cleanPhone.length === 10) { cleanPhone = '91' + cleanPhone; }
 
-            window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(msg)}`, '_blank');
+            showToast('WhatsApp తెరుచుకుంటోంది... 2.5 సెకన్ల తర్వాత ప్రింట్ మొదలవుతుంది.');
+
+            // Open WhatsApp app directly — no browser tab
+            window.location.href = 'whatsapp://send?phone=' + cleanPhone + '&text=' + encodeURIComponent(msg);
+
+            // Auto-proceed to print after returning from WhatsApp
+            setTimeout(() => { printShiftSummary(); }, 2500);
         }
 
         db.ref('/').on('value', (snapshot) => {
@@ -1007,7 +1063,6 @@
             
             if (activeSessions) {
                 for (const [uname, session] of Object.entries(activeSessions)) {
-                    // ADMINS ARE NO LONGER HIDDEN FROM LIVE OPERATORS LIST
                     if(!session || session.role === 'tester') continue;
                     hasActiveUsers = true;
                     let loginTimeStr = session.loginTime ? new Date(session.loginTime).toLocaleTimeString('te-IN', {hour: '2-digit', minute:'2-digit'}) : '--';
@@ -1024,16 +1079,17 @@
             let totals = getTodayTotals();
             let spotsArray = Array.isArray(spots) ? spots : Object.values(spots || {});
             let inLot = spotsArray.filter(s => s && s.isOccupied).length;
-            
+
+            // totalEntered = vehicles that left today (handled) + vehicles currently in lot
             let totalEnteredToday = totals.tHandled + inLot;
 
             document.getElementById('dash-total-entered').innerText = totalEnteredToday;
-            document.getElementById('dash-total-left').innerText = totals.tHandled;
-            document.getElementById('dash-in-lot').innerText = inLot;
+            document.getElementById('dash-total-left').innerText    = totals.tHandled;
+            document.getElementById('dash-in-lot').innerText        = inLot;
             
-            document.getElementById('dash-cash').innerText = `₹${totals.tCash.toFixed(2)}`;
-            document.getElementById('dash-online').innerText = `₹${totals.tOnline.toFixed(2)}`;
-            document.getElementById('dash-pass').innerText = `₹${totals.tPass.toFixed(2)}`;
+            document.getElementById('dash-cash').innerText        = `₹${totals.tCash.toFixed(2)}`;
+            document.getElementById('dash-online').innerText      = `₹${totals.tOnline.toFixed(2)}`;
+            document.getElementById('dash-pass').innerText        = `₹${totals.tPass.toFixed(2)}`;
             document.getElementById('dash-grand-total').innerText = `₹${(totals.tCash + totals.tOnline).toFixed(0)}`;
         }
 
@@ -1319,13 +1375,26 @@
             const msg = `*శ్రీ వెంకటేశ్వర పార్కింగ్*\n\nహలో ${personName} గారు,\n\n🚘 స్పాట్: #${currentActiveSpot.id}\n📋 బండి నంబర్: ${currentActiveSpot.plate}\n🕒 సమయం: ${checkInTime}\n👤 ఆపరేటర్: ${currentShift.name}\n\n_మా వద్ద పార్క్ చేసినందుకు ధన్యవాదాలు!_`;
             
             if (actionType === 'whatsapp_print') {
-                sendWhatsAppReceipt(cleanPhone, msg);
-            }
-            
-            if (actionType === 'whatsapp_print' || actionType === 'print_only') {
+                // Build print content first, then fire WhatsApp with print as callback
                 document.body.className = 'print-mode-receipt';
                 document.getElementById('receipt-type').innerText = 'ఎంట్రీ రసీదు';
-                
+                const entryDateStr = new Date(currentActiveSpot.entryTime).toLocaleString('te-IN');
+                let printHTML = `
+                    <div class="receipt-row"><span>ఆపరేటర్:</span> <span>${escapeHTML(currentShift.name)}</span></div>
+                    <div class="receipt-row"><span>కస్టమర్ పేరు:</span> <strong>${escapeHTML(currentActiveSpot.personName || '--')}</strong></div>
+                    <div class="receipt-line"></div>
+                    <div class="receipt-row"><span>స్పాట్:</span> <strong style="font-size:16px;">#${currentActiveSpot.id}</strong></div>
+                    <div class="receipt-row"><span>బండి:</span> <strong style="font-size:14px;">${escapeHTML(currentActiveSpot.plate || '--')}</strong></div>
+                    <div class="receipt-row"><span>ఇన్ (In):</span> <span>${entryDateStr}</span></div>
+                    <div class="receipt-line"></div>
+                    <div style="text-align:center; font-size:11px; margin-top:5px; font-weight:bold;">బయటకు వెళ్లేటప్పుడు ఈ రసీదు చూపించండి</div>
+                `;
+                document.getElementById('receipt-body').innerHTML = printHTML;
+                showToast('WhatsApp తెరుచుకుంటోంది... వెనక్కి వచ్చిన తర్వాత రసీదు ప్రింట్ అవుతుంది.');
+                sendWhatsAppReceipt(cleanPhone, msg, () => { window.print(); });
+            } else if (actionType === 'print_only') {
+                document.body.className = 'print-mode-receipt';
+                document.getElementById('receipt-type').innerText = 'ఎంట్రీ రసీదు';
                 const entryDateStr = new Date(currentActiveSpot.entryTime).toLocaleString('te-IN');
                 let printHTML = `
                     <div class="receipt-row"><span>ఆపరేటర్:</span> <span>${escapeHTML(currentShift.name)}</span></div>
@@ -1339,9 +1408,9 @@
                 `;
                 document.getElementById('receipt-body').innerHTML = printHTML;
                 setTimeout(() => { window.print(); }, 500);
-                showToast(`స్పాట్ #${currentActiveSpot.id} చెక్-ఇన్ చేయబడింది. రసీదు ప్రింట్ అవుతోంది...`);
+                showToast('స్పాట్ #' + currentActiveSpot.id + ' చెక్-ఇన్ చేయబడింది. రసీదు ప్రింట్ అవుతోంది...');
             } else {
-                showToast(`స్పాట్ #${currentActiveSpot.id} (${escapeHTML(personName)}) చెక్-ఇన్ చేయబడింది.`);
+                showToast('స్పాట్ #' + currentActiveSpot.id + ' (' + escapeHTML(personName) + ') చెక్-ఇన్ చేయబడింది.');
             }
 
             if (!isTester) {
@@ -1846,174 +1915,256 @@
             calculateReport();
         }
 
-        // 🚨 ADMIN LIVE SHIFTS ARE NOW FETCHED IN THE REPORTS 
+        // 🔥 REPORT ENGINE — pulls fresh from Firebase every time
         function calculateReport() {
             const startVal = document.getElementById('rep-start-date').value;
-            const endVal = document.getElementById('rep-end-date').value;
-            
-            if(!startVal || !endVal) return alert("దయచేసి రెండు తేదీలను ఎంచుకోండి.");
+            const endVal   = document.getElementById('rep-end-date').value;
+            if (!startVal || !endVal) return alert("దయచేసి రెండు తేదీలను ఎంచుకోండి.");
+
+            const statusEl = document.getElementById('rep-db-status');
+            const tbody    = document.getElementById('rep-daywise-body');
+            statusEl.innerHTML = '⏳ Firebase నుండి డేటా తీసుకుంటోంది...';
+            tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:20px;color:#94a3b8;">లోడ్ అవుతోంది...</td></tr>';
 
             let sParts = startVal.split('-');
             let eParts = endVal.split('-');
-            
-            const startTs = new Date(sParts[0], sParts[1]-1, sParts[2], 0, 0, 0, 0).getTime();
-            const endTs = new Date(eParts[0], eParts[1]-1, eParts[2], 23, 59, 59, 999).getTime();
+            const startTs = new Date(+sParts[0], +sParts[1]-1, +sParts[2], 0,  0,  0,   0).getTime();
+            const endTs   = new Date(+eParts[0], +eParts[1]-1, +eParts[2], 23, 59, 59, 999).getTime();
 
-            let calcHandled = 0; let calcCash = 0; let calcOnline = 0; let calcPass = 0;
-            let filteredShifts = [];
-            let groupedData = {}; 
+            // Pull shiftHistory and activeSessions fresh from Firebase
+            Promise.all([
+                db.ref('/shiftHistory').once('value'),
+                db.ref('/activeSessions').once('value')
+            ]).then(([histSnap, sessSnap]) => {
+                const histData = histSnap.val();
+                const sessData = sessSnap.val();
 
-            let historyArray = Array.isArray(shiftHistory) ? shiftHistory : Object.values(shiftHistory || {});
-
-            historyArray.forEach(shift => {
-                if(shift && shift.logoutTime >= startTs && shift.logoutTime <= endTs) {
-                    processShiftForReport(shift, shift.logoutTime, filteredShifts, groupedData);
-                    calcHandled += (shift.handled || 0);
-                    calcCash += parseFloat(shift.cash || 0);
-                    calcOnline += parseFloat(shift.online || 0);
-                    calcPass += parseFloat(shift.passUsage || 0);
+                let historyArray = [];
+                if (histData) {
+                    historyArray = Array.isArray(histData) ? histData : Object.values(histData);
                 }
-            });
 
-            let allActive = [];
-            if (activeSessions) {
-                Object.values(activeSessions).forEach(session => {
-                    if(session && session.username !== currentShift.username) allActive.push(session);
+                let liveSessionsArray = [];
+                if (sessData) {
+                    Object.values(sessData).forEach(s => {
+                        if (s && s.role !== 'tester') liveSessionsArray.push(s);
+                    });
+                }
+
+                // --- Aggregate by operator-shift ---
+                // dayMap: { "YYYY-MM-DD": { operatorName: { handled, cash, online, pass, isLive, loginTime } } }
+                const dayMap = {};
+
+                function addToDay(dateStr, name, h, c, o, p, isLive, loginTime) {
+                    if (!dayMap[dateStr]) dayMap[dateStr] = {};
+                    const key = name + (isLive ? ' 🟢' : '');
+                    if (!dayMap[dateStr][key]) {
+                        dayMap[dateStr][key] = { handled:0, cash:0, online:0, pass:0, isLive, loginTime };
+                    }
+                    dayMap[dateStr][key].handled += (h || 0);
+                    dayMap[dateStr][key].cash    += parseFloat(c || 0);
+                    dayMap[dateStr][key].online  += parseFloat(o || 0);
+                    dayMap[dateStr][key].pass    += parseFloat(p || 0);
+                }
+
+                // Process completed shifts
+                historyArray.forEach(shift => {
+                    if (!shift || !shift.logoutTime) return;
+                    if (shift.logoutTime < startTs || shift.logoutTime > endTs) return;
+                    const d = new Date(shift.logoutTime);
+                    const dateStr = getLocalDateString(d);
+                    addToDay(dateStr, shift.name || 'Unknown', shift.handled, shift.cash, shift.online, shift.passUsage, false, shift.loginTime);
                 });
-            }
-            if (currentShift && currentShift.active && currentShift.role !== 'tester') {
-                allActive.push(currentShift); // Admin pushes their own data here now!
-            }
 
-            allActive.forEach(shift => {
-                let effTime = shift.loginTime || Date.now(); 
-                if(effTime <= endTs && effTime >= startTs) {
-                    let livePseudoShift = {
-                        name: shift.name + " (లైవ్)", 
-                        loginTime: shift.loginTime,
-                        logoutTime: Date.now(), 
-                        handled: shift.handled,
-                        cash: shift.cash,
-                        online: shift.online,
-                        passUsage: shift.passUsage
-                    };
-                    processShiftForReport(livePseudoShift, livePseudoShift.logoutTime, filteredShifts, groupedData);
-                    calcHandled += (shift.handled || 0);
-                    calcCash += parseFloat(shift.cash || 0);
-                    calcOnline += parseFloat(shift.online || 0);
-                    calcPass += parseFloat(shift.passUsage || 0);
+                // Process live / active shifts
+                liveSessionsArray.forEach(shift => {
+                    if (!shift) return;
+                    const refTime = shift.loginTime || Date.now();
+                    if (refTime < startTs || refTime > endTs) return;
+                    const d = new Date(refTime);
+                    const dateStr = getLocalDateString(d);
+                    addToDay(dateStr, shift.name || 'Unknown', shift.handled, shift.cash, shift.online, shift.passUsage, true, shift.loginTime);
+                });
+
+                // Also include current operator's live data if in range
+                if (currentShift && currentShift.active && currentShift.role !== 'tester') {
+                    const refTime = currentShift.loginTime || Date.now();
+                    if (refTime >= startTs && refTime <= endTs) {
+                        const dateStr = getLocalDateString(new Date(refTime));
+                        addToDay(dateStr, currentShift.name || 'Unknown', currentShift.handled, currentShift.cash, currentShift.online, currentShift.passUsage, true, currentShift.loginTime);
+                    }
                 }
-            });
 
-            document.getElementById('rep-handled').innerText = calcHandled;
-            document.getElementById('rep-cash').innerText = calcCash.toFixed(2);
-            document.getElementById('rep-online').innerText = calcOnline.toFixed(2);
-            document.getElementById('rep-pass').innerText = calcPass.toFixed(2);
-            document.getElementById('rep-total').innerText = (calcCash + calcOnline).toFixed(2);
+                // --- Build totals and render table ---
+                let totalHandled = 0, totalCash = 0, totalOnline = 0, totalPass = 0;
 
-            currentReportData = {
-                startDate: startVal,
-                endDate: endVal,
-                handled: calcHandled,
-                cash: calcCash,
-                online: calcOnline,
-                passUsage: calcPass,
-                shifts: filteredShifts,
-                grouped: groupedData 
-            };
-        }
+                const sortedDates = Object.keys(dayMap).sort();
+                tbody.innerHTML = '';
 
-        function processShiftForReport(shift, timeAnchor, filteredShifts, groupedData) {
-            filteredShifts.push(shift);
-            let d = new Date(timeAnchor);
-            let dateStr = getLocalDateString(d); 
-            let isAM = d.getHours() < 12;
-            let period = isAM ? 'ఉదయం షిఫ్ట్ (00:00 - 11:59 AM)' : 'రాత్రి షిఫ్ట్ (12:00 PM - 23:59)';
+                if (sortedDates.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:20px;color:#94a3b8;">ఈ తేదీల్లో ఎలాంటి సమాచారం లేదు.</td></tr>';
+                    document.getElementById('rep-daywise-foot').style.display = 'none';
+                } else {
+                    // Group rows by date with sub-rows per operator
+                    sortedDates.forEach((dateStr, di) => {
+                        const ops = dayMap[dateStr];
+                        const opNames = Object.keys(ops);
+                        let dayHandled = 0, dayCash = 0, dayOnline = 0, dayPass = 0;
 
-            if (!groupedData[dateStr]) {
-                groupedData[dateStr] = {
-                    'ఉదయం షిఫ్ట్ (00:00 - 11:59 AM)': { handled: 0, cash: 0, online: 0, passUsage: 0 },
-                    'రాత్రి షిఫ్ట్ (12:00 PM - 23:59)': { handled: 0, cash: 0, online: 0, passUsage: 0 }
+                        opNames.forEach(opName => {
+                            const r = ops[opName];
+                            dayHandled += r.handled; dayCash += r.cash; dayOnline += r.online; dayPass += r.pass;
+                        });
+
+                        const rowspan = opNames.length;
+                        const bg = di % 2 === 0 ? '#ffffff' : '#f8fafc';
+                        const dateLabel = new Date(dateStr + 'T00:00:00').toLocaleDateString('te-IN', {weekday:'short', day:'2-digit', month:'short', year:'numeric'});
+
+                        opNames.forEach((opName, oi) => {
+                            const r = ops[opName];
+                            const total = r.cash + r.online;
+                            const liveTag = r.isLive ? '<span style="background:#10b981;color:white;font-size:10px;padding:1px 5px;border-radius:10px;margin-left:4px;">LIVE</span>' : '';
+                            const loginStr = r.loginTime ? new Date(r.loginTime).toLocaleTimeString('te-IN', {hour:'2-digit', minute:'2-digit'}) : '--';
+
+                            let tr = `<tr style="background:${bg}; border-bottom:1px solid #e2e8f0;">`;
+                            if (oi === 0) {
+                                tr += `<td rowspan="${rowspan}" style="padding:10px 8px; font-weight:bold; border-right:2px solid #cbd5e1; vertical-align:middle; white-space:nowrap;">${dateLabel}</td>`;
+                            }
+                            tr += `
+                                <td style="padding:8px; white-space:nowrap;">${escapeHTML(opName)}${liveTag}<br><span style="font-size:10px;color:#94a3b8;">లాగిన్: ${loginStr}</span></td>
+                                <td style="padding:8px; text-align:center; font-weight:bold;">${r.handled}</td>
+                                <td style="padding:8px; text-align:right; color:var(--open-color);">₹${r.cash.toFixed(2)}</td>
+                                <td style="padding:8px; text-align:right; color:var(--accent-color);">₹${r.online.toFixed(2)}</td>
+                                <td style="padding:8px; text-align:right; color:var(--shift-color);">₹${r.pass.toFixed(2)}</td>
+                                <td style="padding:8px; text-align:right; font-weight:bold; color:var(--admin-color);">₹${total.toFixed(2)}</td>
+                                <td style="padding:8px; text-align:center;">${r.isLive ? '🟢' : '✅'}</td>
+                            </tr>`;
+                            tbody.innerHTML += tr;
+                        });
+
+                        // Day sub-total row
+                        if (opNames.length > 1) {
+                            tbody.innerHTML += `
+                                <tr style="background:#fef9ec; border-bottom:2px solid #e2e8f0;">
+                                    <td colspan="2" style="padding:6px 8px; font-size:12px; color:#92400e; font-weight:bold; padding-left:16px;">↳ ${dateLabel} మొత్తం</td>
+                                    <td style="padding:6px 8px; text-align:center; font-weight:bold;">${dayHandled}</td>
+                                    <td style="padding:6px 8px; text-align:right; color:var(--open-color); font-weight:bold;">₹${dayCash.toFixed(2)}</td>
+                                    <td style="padding:6px 8px; text-align:right; color:var(--accent-color); font-weight:bold;">₹${dayOnline.toFixed(2)}</td>
+                                    <td style="padding:6px 8px; text-align:right; color:var(--shift-color); font-weight:bold;">₹${dayPass.toFixed(2)}</td>
+                                    <td style="padding:6px 8px; text-align:right; font-weight:bold; color:var(--admin-color); font-size:14px;">₹${(dayCash+dayOnline).toFixed(2)}</td>
+                                    <td></td>
+                                </tr>`;
+                        }
+
+                        totalHandled += dayHandled; totalCash += dayCash; totalOnline += dayOnline; totalPass += dayPass;
+                    });
+
+                    // Footer totals
+                    document.getElementById('rep-daywise-foot').style.display = '';
+                    document.getElementById('foot-handled').innerText = totalHandled;
+                    document.getElementById('foot-cash').innerText    = '₹' + totalCash.toFixed(2);
+                    document.getElementById('foot-online').innerText  = '₹' + totalOnline.toFixed(2);
+                    document.getElementById('foot-pass').innerText    = '₹' + totalPass.toFixed(2);
+                    document.getElementById('foot-total').innerText   = '₹' + (totalCash + totalOnline).toFixed(2);
+                }
+
+                // Update summary cards
+                document.getElementById('rep-handled').innerText = totalHandled;
+                document.getElementById('rep-cash').innerText    = totalCash.toFixed(2);
+                document.getElementById('rep-online').innerText  = totalOnline.toFixed(2);
+                document.getElementById('rep-pass').innerText    = totalPass.toFixed(2);
+                document.getElementById('rep-total').innerText   = (totalCash + totalOnline).toFixed(2);
+
+                const liveCount = liveSessionsArray.length + (currentShift && currentShift.active && currentShift.role !== 'tester' ? 1 : 0);
+                document.getElementById('rep-source-label').innerHTML =
+                    `📡 Firebase నుండి తీసుకున్నది • ${historyArray.length} చారిత్రక షిఫ్టులు` +
+                    (liveCount > 0 ? ` + ${liveCount} లైవ్ సెషన్లు` : '');
+                statusEl.innerHTML = `✅ ${new Date().toLocaleTimeString('te-IN')} కు అప్‌డేట్ చేయబడింది`;
+
+                // Save for print/export
+                currentReportData = {
+                    startDate: startVal, endDate: endVal,
+                    handled: totalHandled, cash: totalCash, online: totalOnline, passUsage: totalPass,
+                    dayMap: dayMap, sortedDates: sortedDates
                 };
-            }
 
-            groupedData[dateStr][period].handled += (shift.handled || 0);
-            groupedData[dateStr][period].cash += parseFloat(shift.cash || 0);
-            groupedData[dateStr][period].online += parseFloat(shift.online || 0);
-            groupedData[dateStr][period].passUsage += parseFloat(shift.passUsage || 0);
+            }).catch(err => {
+                console.error('Report fetch error:', err);
+                statusEl.innerHTML = '❌ డేటా తీసుకోవడంలో ఎర్రర్. ఇంటర్నెట్ చెక్ చేయండి.';
+                tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:20px;color:red;">Firebase నుండి డేటా రాలేదు.</td></tr>';
+            });
         }
 
         function exportToExcel() {
-            if (!currentReportData || !currentReportData.grouped || Object.keys(currentReportData.grouped).length === 0) {
+            if (!currentReportData || !currentReportData.dayMap || Object.keys(currentReportData.dayMap).length === 0) {
                 alert("డేటా లేదు. ముందుగా తేదీలు సెలెక్ట్ చేసి సెర్చ్ నొక్కండి.");
                 return;
             }
 
-            let csvContent = "data:text/csv;charset=utf-8,\uFEFF"; 
-            csvContent += "తేదీ (Date),సమయం (12-Hr Shift),వాహనాలు (Handled),నగదు (Cash - Rs),ఆన్‌లైన్ (Online - Rs),పాస్ (Pass Usage - Rs),మొత్తం (Total - Rs)\n";
+            let csvContent = "data:text/csv;charset=utf-8,\uFEFF";
+            csvContent += "తేదీ (Date),ఆపరేటర్ (Operator),వాహనాలు (Handled),నగదు (Cash ₹),ఆన్‌లైన్ (Online ₹),పాస్ (Pass ₹),మొత్తం (Total ₹),స్థితి\n";
 
-            const dates = Object.keys(currentReportData.grouped).sort();
-            dates.forEach(date => {
-                const periods = ['ఉదయం షిఫ్ట్ (00:00 - 11:59 AM)', 'రాత్రి షిఫ్ట్ (12:00 PM - 23:59)'];
-                periods.forEach(period => {
-                    let d = currentReportData.grouped[date][period];
-                    if (d.handled > 0 || d.cash > 0 || d.online > 0 || d.passUsage > 0) {
-                        let total = d.cash + d.online;
-                        let formattedDate = new Date(date).toLocaleDateString('te-IN');
-                        csvContent += `"${formattedDate}","${period}",${d.handled},${d.cash.toFixed(2)},${d.online.toFixed(2)},${d.passUsage.toFixed(2)},${total.toFixed(2)}\n`;
-                    }
+            const dates = Object.keys(currentReportData.dayMap).sort();
+            dates.forEach(dateStr => {
+                const formattedDate = new Date(dateStr + 'T00:00:00').toLocaleDateString('te-IN');
+                const ops = currentReportData.dayMap[dateStr];
+                Object.keys(ops).forEach(opName => {
+                    const r = ops[opName];
+                    const total = r.cash + r.online;
+                    const status = r.isLive ? 'Live' : 'Completed';
+                    csvContent += `"${formattedDate}","${opName}",${r.handled},${r.cash.toFixed(2)},${r.online.toFixed(2)},${r.pass.toFixed(2)},${total.toFixed(2)},${status}\n`;
                 });
             });
 
             const encodedUri = encodeURI(csvContent);
             const link = document.createElement("a");
             link.setAttribute("href", encodedUri);
-            link.setAttribute("download", `Sri_Venkateswara_Parking_Report_${currentReportData.startDate}_to_${currentReportData.endDate}.csv`);
+            link.setAttribute("download", `Parking_Report_${currentReportData.startDate}_to_${currentReportData.endDate}.csv`);
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
         }
 
         function printAdminReport() {
+            if (!currentReportData || !currentReportData.dayMap) {
+                alert("ముందుగా తేదీలు సెలెక్ట్ చేసి సెర్చ్ నొక్కండి.");
+                return;
+            }
             document.body.className = 'print-mode-report';
 
             document.getElementById('a4-generation-details').innerText = `ప్రింట్ చేసిన సమయం: ${new Date().toLocaleString('te-IN')} (ఆపరేటర్: ${escapeHTML(currentShift.name)})`;
             document.getElementById('a4-period-dates').innerText = `${currentReportData.startDate} నుండి ${currentReportData.endDate} వరకు`;
-            
+
             document.getElementById('a4-handled').innerText = currentReportData.handled;
-            document.getElementById('a4-cash').innerText = currentReportData.cash.toFixed(2);
-            document.getElementById('a4-online').innerText = currentReportData.online.toFixed(2);
-            document.getElementById('a4-pass').innerText = currentReportData.passUsage.toFixed(2);
-            document.getElementById('a4-total').innerText = (currentReportData.cash + currentReportData.online).toFixed(2);
+            document.getElementById('a4-cash').innerText    = currentReportData.cash.toFixed(2);
+            document.getElementById('a4-online').innerText  = currentReportData.online.toFixed(2);
+            document.getElementById('a4-pass').innerText    = currentReportData.passUsage.toFixed(2);
+            document.getElementById('a4-total').innerText   = (currentReportData.cash + currentReportData.online).toFixed(2);
 
             const tbody = document.getElementById('a4-ledger-body');
             tbody.innerHTML = '';
-            
-            if (!currentReportData.grouped || Object.keys(currentReportData.grouped).length === 0) {
-                tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;">ఈ తేదీల్లో ఎలాంటి సమాచారం లేదు.</td></tr>';
+
+            const dates = Object.keys(currentReportData.dayMap).sort();
+            if (dates.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;">ఈ తేదీల్లో ఎలాంటి సమాచారం లేదు.</td></tr>';
             } else {
-                const dates = Object.keys(currentReportData.grouped).sort();
-                dates.forEach(date => {
-                    const periods = ['ఉదయం షిఫ్ట్ (00:00 - 11:59 AM)', 'రాత్రి షిఫ్ట్ (12:00 PM - 23:59)'];
-                    let formattedDate = new Date(date).toLocaleDateString('te-IN');
-                    
-                    periods.forEach(period => {
-                        let d = currentReportData.grouped[date][period];
-                        if(d.handled > 0 || d.cash > 0 || d.online > 0 || d.passUsage > 0) {
-                            tbody.innerHTML += `
-                                <tr>
-                                    <td><strong>${formattedDate}</strong></td>
-                                    <td>${period}</td>
-                                    <td>${d.handled}</td>
-                                    <td>₹${d.cash.toFixed(2)}</td>
-                                    <td>₹${d.online.toFixed(2)}</td>
-                                </tr>
-                            `;
-                        }
+                dates.forEach(dateStr => {
+                    const formattedDate = new Date(dateStr + 'T00:00:00').toLocaleDateString('te-IN');
+                    const ops = currentReportData.dayMap[dateStr];
+                    Object.keys(ops).forEach(opName => {
+                        const r = ops[opName];
+                        tbody.innerHTML += `
+                            <tr>
+                                <td><strong>${formattedDate}</strong></td>
+                                <td>${escapeHTML(opName)}</td>
+                                <td>${r.handled}</td>
+                                <td>₹${r.cash.toFixed(2)}</td>
+                                <td>₹${r.online.toFixed(2)}</td>
+                                <td>₹${r.pass.toFixed(2)}</td>
+                            </tr>`;
                     });
                 });
             }
-            
             setTimeout(() => { window.print(); }, 500);
         }
 
