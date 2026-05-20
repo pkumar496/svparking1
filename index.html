@@ -1311,7 +1311,7 @@
                 <div style="text-align:center; font-size:10px; margin-top:5px;">పార్కింగ్ చెక్-అవుట్ సమయంలో ఈ బ్యాలెన్స్ వాడబడుతుంది.</div>
                 <div class="receipt-line"></div>
                 <div style="font-size:9px; color:#333; margin-top:6px; line-height:1.5;">
-                    <div>⚠ విలువైన వాటి బాధ్యత వాహన యజమానికే ఉంటుంది.</div>
+                    <div>⚠ పార్కింగ్ మీ విలువైన వస్తువుల బాధ్యతను తీసుకోదు.</div>
                     <div>⚖ తర్కాలు గుంటూరు కోర్టులో పరిష్కరించబడతాయి.</div>
                     <div>ℹ పాస్ బ్యాలెన్స్ రీఫండ్ చేయబడదు.</div>
                 </div>
@@ -1338,7 +1338,7 @@
                 `\n💰 ప్రస్తుత బ్యాలెన్స్: ₹${parseFloat(pass.balance).toFixed(2)}\n` +
                 `👷 ఆపరేటర్: ${operatorName}\n\n` +
                 `_పార్కింగ్ చెక్-అవుట్ సమయంలో ఈ బ్యాలెన్స్ వాడబడుతుంది._\n\n` +
-                `⚠ విలువైన వాటి బాధ్యత వాహన యజమానికే ఉంటుంది.\n` +
+                `⚠ పార్కింగ్ మీ విలువైన వస్తువుల బాధ్యతను తీసుకోదు.\n` +
                 `⚖ తర్కాలు గుంటూరు కోర్టులో పరిష్కరించబడతాయి.\n` +
                 `ℹ పాస్ బ్యాలెన్స్ రీఫండ్ చేయబడదు.`;
 
@@ -1364,7 +1364,7 @@
                 <div style="text-align:center; font-size:11px; margin-top:5px; font-weight:bold;">బయటకు వెళ్లేటప్పుడు ఈ రసీదు చూపించండి</div>
                 <div class="receipt-line"></div>
                 <div style="font-size:9px; color:#333; margin-top:6px; line-height:1.5;">
-                    <div>⚠ విలువైన వాటి బాధ్యత యజమానికి ఉంటుంది.</div>
+                    <div>⚠ పార్కింగ్ మీ విలువైన వస్తువుల బాధ్యతను తీసుకోదు.</div>
                     <div>⚖ తర్కాలు గుంటూరు కోర్టులో పరిష్కరించబడతాయి.</div>
                 </div>
             `;
@@ -1425,7 +1425,7 @@
             autoSaveToCustomerDB();
 
             const checkInTime = new Date().toLocaleTimeString('te-IN', {hour: '2-digit', minute:'2-digit'});
-            const msg = `*శ్రీ వెంకటేశ్వర పార్కింగ్*\n\n🚘 స్పాట్: #${currentActiveSpot.id}\n📋 బండి నంబర్: ${currentActiveSpot.plate}\n🕒 సమయం: ${checkInTime}\n👤 ఆపరేటర్: ${currentShift.name}\n\n_మా వద్ద పార్క్ చేసినందుకు ధన్యవాదాలు!_\n\n⚠ విలువైన వాటి బాధ్యత యజమానికి ఉంటుంది.\n⚖ తర్కాలు గుంటూరు కోర్టులో పరిష్కరించబడతాయి.`;
+            const msg = `*శ్రీ వెంకటేశ్వర పార్కింగ్*\n\n🚘 స్పాట్: #${currentActiveSpot.id}\n📋 బండి నంబర్: ${currentActiveSpot.plate}\n🕒 సమయం: ${checkInTime}\n👤 ఆపరేటర్: ${currentShift.name}\n\n_మా వద్ద పార్క్ చేసినందుకు ధన్యవాదాలు!_\n\n⚠ పార్కింగ్ మీ విలువైన వస్తువుల బాధ్యతను తీసుకోదు.\n⚖ తర్కాలు గుంటూరు కోర్టులో పరిష్కరించబడతాయి.`;
 
             const entryDateStr = new Date(currentActiveSpot.entryTime).toLocaleString('te-IN');
             const receiptHTML = `
@@ -1439,7 +1439,7 @@
                 <div style="text-align:center; font-size:11px; margin-top:5px; font-weight:bold;">బయటకు వెళ్లేటప్పుడు ఈ రసీదు చూపించండి</div>
                 <div class="receipt-line"></div>
                 <div style="font-size:9px; color:#333; margin-top:6px; line-height:1.5;">
-                    <div>⚠ విలువైన వాటి బాధ్యత యజమానికి ఉంటుంది.</div>
+                    <div>⚠ పార్కింగ్ మీ విలువైన వస్తువుల బాధ్యతను తీసుకోదు.</div>
                     <div>⚖ తర్కాలు గుంటూరు కోర్టులో పరిష్కరించబడతాయి.</div>
                 </div>
             `;
