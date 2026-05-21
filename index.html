@@ -699,21 +699,49 @@
         let isTester = false; 
         
         let currentShift = { active: false, username: "", name: "", role: "", loginTime: null, logoutTime: null, handled: 0, cash: 0, online: 0, passUsage: 0 };
+        let logoutInProgress = false; // FIX Bug 2: Prevent double-logout double-push
         
-        const savedSession = localStorage.getItem('parkingShiftSession');
-        
-        if(savedSession) {
+        // FIX Bug 4 & 5: Validate restored localStorage session against Firebase activeSessions.
+        // Also use getLocalDateString() instead of toDateString() to avoid timezone mismatch.
+        async function restoreSessionFromLocalStorage() {
+            const savedSession = localStorage.getItem('parkingShiftSession');
+            if (!savedSession) return;
             try {
                 let parsed = JSON.parse(savedSession);
-                // FIX: Stale LocalStorage Trap (Cross-Day Compounding)
-                const todayStr = new Date().toDateString();
-                const shiftStr = new Date(parsed.loginTime).toDateString();
-                
+
+                // FIX Bug 5: Use locale-safe date comparison instead of toDateString()
+                const todayStr = getLocalDateString(new Date());
+                const shiftStr = getLocalDateString(new Date(parsed.loginTime));
+
                 if (todayStr !== shiftStr) {
                     clearLocalSession();
-                } else {
+                    return;
+                }
+
+                // FIX Bug 4: Tester sessions don't need server validation
+                if (parsed.role === 'tester') {
                     currentShift = parsed;
-                    if(currentShift.role === 'tester') { isTester = true; }
+                    isTester = true;
+                    return;
+                }
+
+                // FIX Bug 4: Cross-check against Firebase activeSessions before restoring.
+                // If the session was already logged out server-side (e.g. browser crashed after
+                // Firebase write but before clearLocalSession), do NOT restore it — it would
+                // re-open a zombie shift and double-count revenue on next logout.
+                try {
+                    const activeSnap = await db.ref('/activeSessions/' + parsed.username).once('value');
+                    if (activeSnap.exists()) {
+                        // Session is still live server-side — safe to restore
+                        currentShift = parsed;
+                    } else {
+                        // Server already removed this session; discard stale local copy
+                        clearLocalSession();
+                    }
+                } catch (networkErr) {
+                    // If Firebase is unreachable, restore from local as fallback but flag it
+                    console.warn('Could not validate session with server; restoring from local cache.', networkErr);
+                    currentShift = parsed;
                 }
             } catch (e) {
                 clearLocalSession();
@@ -837,6 +865,11 @@
             setTimeout(() => { printShiftSummary(); }, 2500);
         }
 
+        // FIX Bug 4: Run async session restoration BEFORE attaching the Firebase listener.
+        // This ensures currentShift is properly validated (or cleared) before the first
+        // on('value') fires and calls updateShiftUI()/renderGrid().
+        restoreSessionFromLocalStorage().then(() => {
+
         db.ref('/').on('value', (snapshot) => {
             const data = snapshot.val();
             if (data) {
@@ -878,6 +911,8 @@
                 <div style="color:var(--occupied-color);text-align:center;">డేటాబేస్ కనెక్షన్ విఫలమైంది.<br><small style="font-size:14px;color:#555;">ఇంటర్నెట్ కనెక్షన్ చెక్ చేయండి మరియు పేజీని రిఫ్రెష్ చేయండి.</small></div>
                 <button onclick="location.reload()" style="margin-top:15px;padding:10px 25px;background:var(--accent-color);color:white;border:none;border-radius:6px;cursor:pointer;font-size:16px;">🔄 రిఫ్రెష్</button>`;
         });
+
+        }); // end restoreSessionFromLocalStorage().then()
 
         function pushToCloud() {
             if(isTester) return; 
@@ -1503,12 +1538,27 @@
             _doCheckout(method, btnElement);
         }
 
-        function _doCheckout(method, btnElement) {
+        async function _doCheckout(method, btnElement) {
             if (!currentActiveSpot || !currentActiveSpot.isOccupied) {
                 if (btnElement) btnElement.disabled = false;
                 return;
             }
             let cashReceived = 0; let changeDue = 0;
+
+            // FIX Bug 3: Always re-read globalStats from Firebase before mutating.
+            // If the page was reloaded mid-shift (crash/refresh), the in-memory globalStats
+            // was reset to defaults and then restored from Firebase via the on('value') listener.
+            // But a race condition exists: if pushToCloud() fired during login before the listener
+            // responded, the cloud value could already be stale. Fetching fresh here ensures we
+            // always increment from the true server value, not a possibly-stale local copy.
+            if (!isTester) {
+                try {
+                    const freshSnap = await db.ref('/globalStats').once('value');
+                    if (freshSnap.exists()) globalStats = freshSnap.val();
+                } catch(e) {
+                    console.warn('Could not refresh globalStats before checkout; using cached value.', e);
+                }
+            }
 
             if (method === 'PASS') {
                 const phone = currentActiveSpot.phone;
@@ -1739,6 +1789,10 @@
         }
 
         async function executeSecureLogout(isShiftEnd = false) {
+            // FIX Bug 2: Prevent double-logout if user clicks button twice or network retries.
+            // Without this guard, newShift gets pushed to /shiftHistory twice, doubling revenue.
+            if (logoutInProgress) return;
+            logoutInProgress = true;
             try {
                 let alertMsg = "";
                 let finalName = currentShift.name || "Operator";
@@ -1809,6 +1863,7 @@
 
             } catch(e) {
                 console.error("Critical Logout Error:", e);
+                logoutInProgress = false; // FIX Bug 2: Reset guard so user can retry after error
                 alert("డేటాబేస్‌లో సేవ్ చేయడంలో ఎర్రర్ వచ్చింది. ఇంటర్నెట్ కనెక్షన్ చెక్ చేయండి.");
                 document.getElementById('cloud-loader').style.display = 'none';
             }
@@ -1840,9 +1895,13 @@
                 
                 if (currentShift.role !== 'tester') {
                     db.ref('/activeSessions/' + currentShift.username).onDisconnect().remove();
+                    // FIX Bug 1: Do NOT call pushToCloud() here. At login time, globalStats/spots
+                    // in memory are still initialised to zero defaults — the Firebase on('value')
+                    // listener hasn't fired yet. Calling pushToCloud() would overwrite valid cloud
+                    // data with these stale zeros, inflating/corrupting revenue.
+                    // Instead, only register the active session so other clients can see this user.
+                    db.ref('/activeSessions/' + currentShift.username).set(currentShift).catch(e => console.error(e));
                 }
-
-                pushToCloud(); 
                 closeModals();
                 updateShiftUI();
                 renderGrid();
