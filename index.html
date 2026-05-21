@@ -292,6 +292,8 @@
                     <p class="dash-val" style="color: #34d399; font-size: 34px;" id="dash-grand-total">₹0</p>
                     <span style="font-size: 11px; color:#94a3b8; display: block; margin-top: 5px;">(నగదు + ఆన్‌లైన్ మాత్రమే)</span>
                 </div>
+
+
             </div>
         </div>
 
@@ -1016,47 +1018,57 @@
         }
 
         function getTodayTotals() {
-            const today = new Date().setHours(0,0,0,0);
+            const todayStart = new Date().setHours(0, 0, 0, 0);
+            const todayEnd   = new Date().setHours(23, 59, 59, 999);
             let tHandled = 0; let tCash = 0; let tOnline = 0; let tPass = 0;
 
-            // FIX 6: track which active session usernames we count, so a session that is BOTH
-            // in activeSessions AND lingering in shiftHistory is never double-counted.
-            const countedUsernames = new Set();
+            // De-duplicate by loginTime — one unique timestamp per real session.
+            // This prevents ghost sessions (no loginTime or stale loginTime from a previous day)
+            // and overnight shifts (loginTime yesterday, logoutTime today) from inflating today.
+            const seenLoginTimes = new Set();
 
-            // Count active sessions first (live data is always fresher than history)
+            // 1. Current operator — freshest local data, processed first.
+            if (currentShift && currentShift.active && currentShift.role !== 'tester') {
+                const lt = currentShift.loginTime;
+                if (lt && lt >= todayStart && lt <= todayEnd) {
+                    seenLoginTimes.add(String(lt));
+                    tHandled += (currentShift.handled || 0);
+                    tCash    += parseFloat(currentShift.cash || 0);
+                    tOnline  += parseFloat(currentShift.online || 0);
+                    tPass    += parseFloat(currentShift.passUsage || 0);
+                }
+            }
+
+            // 2. Other live sessions — must have a loginTime that falls within today.
+            //    Ghost sessions (no loginTime, or loginTime from a previous day) are excluded.
             if (activeSessions) {
                 Object.values(activeSessions).forEach(session => {
-                    if(session && session.username !== currentShift.username &&
-                       (session.loginTime >= today || !session.loginTime)) {
-                        tHandled += (session.handled || 0);
-                        tCash += parseFloat(session.cash || 0);
-                        tOnline += parseFloat(session.online || 0);
-                        tPass += parseFloat(session.passUsage || 0);
-                        countedUsernames.add(session.username);
-                    }
+                    if (!session || session.role === 'tester') return;
+                    if (session.username === currentShift.username) return;
+                    const lt = session.loginTime;
+                    if (!lt || lt < todayStart || lt > todayEnd) return;
+                    if (seenLoginTimes.has(String(lt))) return;
+                    seenLoginTimes.add(String(lt));
+                    tHandled += (session.handled || 0);
+                    tCash    += parseFloat(session.cash || 0);
+                    tOnline  += parseFloat(session.online || 0);
+                    tPass    += parseFloat(session.passUsage || 0);
                 });
             }
 
-            // Count current operator (freshest local data)
-            if (currentShift && currentShift.active && currentShift.role !== 'tester') {
-                tHandled += (currentShift.handled || 0);
-                tCash += parseFloat(currentShift.cash || 0);
-                tOnline += parseFloat(currentShift.online || 0);
-                tPass += parseFloat(currentShift.passUsage || 0);
-                countedUsernames.add(currentShift.username);
-            }
-
-            // Count completed shifts from history — skip any username already counted above
+            // 3. Completed shifts — filter by loginTime so overnight shifts are excluded.
+            //    A shift that started yesterday and ended today belongs to yesterday, not today.
             let historyArray = Array.isArray(shiftHistory) ? shiftHistory : Object.values(shiftHistory || {});
             historyArray.forEach(shift => {
-                if(shift && shift.logoutTime >= today) {
-                    // Skip if this operator is currently live (already counted above)
-                    if (shift.username && countedUsernames.has(shift.username)) return;
-                    tHandled += (shift.handled || 0);
-                    tCash += parseFloat(shift.cash || 0);
-                    tOnline += parseFloat(shift.online || 0);
-                    tPass += parseFloat(shift.passUsage || 0);
-                }
+                if (!shift) return;
+                const lt = shift.loginTime;
+                if (!lt || lt < todayStart || lt > todayEnd) return;
+                if (seenLoginTimes.has(String(lt))) return;
+                seenLoginTimes.add(String(lt));
+                tHandled += (shift.handled || 0);
+                tCash    += parseFloat(shift.cash || 0);
+                tOnline  += parseFloat(shift.online || 0);
+                tPass    += parseFloat(shift.passUsage || 0);
             });
 
             return { tHandled, tCash, tOnline, tPass };
@@ -1106,6 +1118,7 @@
             document.getElementById('dash-online').innerText      = `₹${totals.tOnline.toFixed(2)}`;
             document.getElementById('dash-pass').innerText        = `₹${totals.tPass.toFixed(2)}`;
             document.getElementById('dash-grand-total').innerText = `₹${(totals.tCash + totals.tOnline).toFixed(0)}`;
+
         }
 
         function showToast(message, isSuccess = true) {
@@ -1766,7 +1779,8 @@
                     else if (!Array.isArray(shiftHistory)) shiftHistory = Object.values(shiftHistory);
 
                     shiftHistory.push({ 
-                        name: finalName, 
+                        name: finalName,
+                        username: currentShift.username || "",
                         loginTime: currentShift.loginTime || Date.now(),
                         logoutTime: Date.now(), 
                         handled: finalHandled, 
@@ -1817,7 +1831,10 @@
         }
 
         function adminDirectLogout() {
-            executeSecureLogout(false);
+            // Pass true so admin shift is written to shiftHistory before clearing the session.
+            // Previously called with false (isShiftEnd=false) which silently dropped all admin
+            // revenue from reports.
+            executeSecureLogout(true);
         }
 
         function attemptLogin() {
@@ -2061,11 +2078,15 @@
                     }
 
                     if (!dayMap[dateStr]) dayMap[dateStr] = {};
-                    // Display key uses name + live indicator so the row looks correct in the table.
-                    const key = name + (isLive ? ' 🟢' : '');
+                    // Key on name only (no emoji) so a shift that transitions from live→completed
+                    // within the same report window merges into a single row rather than producing
+                    // a stale 🟢 row alongside a finished row for the same operator.
+                    const key = name;
                     if (!dayMap[dateStr][key]) {
                         dayMap[dateStr][key] = { handled:0, cash:0, online:0, pass:0, isLive, loginTime };
                     }
+                    // If any sub-entry for this key is still live, keep the row marked live.
+                    if (isLive) dayMap[dateStr][key].isLive = true;
                     dayMap[dateStr][key].handled += (h || 0);
                     dayMap[dateStr][key].cash    += parseFloat(c || 0);
                     dayMap[dateStr][key].online  += parseFloat(o || 0);
@@ -2097,8 +2118,11 @@
                 // registered above (live/current) will be silently skipped, eliminating double-count.
                 historyArray.forEach(shift => {
                     if (!shift || !shift.logoutTime) return;
-                    if (shift.logoutTime < startTs || shift.logoutTime > endTs) return;
-                    const d = new Date(shift.logoutTime);
+                    // Gate and bucket by loginTime: overnight shifts (login yesterday, logout today)
+                    // land on the correct calendar date and are excluded from ranges that don't cover it.
+                    const refTime = shift.loginTime || shift.logoutTime;
+                    if (refTime < startTs || refTime > endTs) return;
+                    const d = new Date(refTime);
                     const dateStr = getLocalDateString(d);
                     addToDay(dateStr, shift.name || 'Unknown', shift.handled, shift.cash, shift.online, shift.passUsage, false, shift.loginTime);
                 });
