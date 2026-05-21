@@ -99,6 +99,7 @@
         .form-group input, .form-group select { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; font-size: 16px; }
         
         .btn { width: 100%; padding: 12px; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; color: white; margin-top: 10px; box-sizing: border-box; font-size: 15px; }
+        .btn:disabled { opacity: 0.6; cursor: not-allowed; }
         .btn-green { background-color: var(--open-color); }
         .btn-whatsapp { background-color: var(--whatsapp-color); color: white; }
         .btn-red { background-color: var(--occupied-color); }
@@ -183,7 +184,7 @@
             <p id="a4-generation-details">ప్రింట్ చేసిన సమయం: --</p>
         </div>
         
-        <h3 style="margin-bottom: 10px;">ఆర్థిక సారాంశం (<span id="a4-period-dates">--</span>)</h3>
+        <h3 style="margin-bottom: 10px;">ఆ ఆర్థిక సారాంశం (<span id="a4-period-dates">--</span>)</h3>
         <div class="a4-summary-box">
             <div class="a4-row"><span>పార్క్ చేసిన వాహనాలు:</span> <strong id="a4-handled">0</strong></div>
             <div class="a4-row"><span>నగదు (Cash):</span> <span>₹<span id="a4-cash">0.00</span></span></div>
@@ -461,7 +462,7 @@
                 <input type="number" id="input-cash-received" placeholder="ఖాళీగా వదిలేయవచ్చు" min="0">
             </div>
 
-            <button class="btn btn-red" onclick="submitCheckout()">చెక్-అవుట్ & ఫైనల్ రసీదు ప్రింట్ చేయి</button>
+            <button class="btn btn-red" id="btn-checkout-submit" onclick="submitCheckout(this)">చెక్-అవుట్ & ఫైనల్ రసీదు ప్రింట్ చేయి</button>
             <button class="btn btn-gray" onclick="closeModals()">మూసివేయి</button>
         </div>
     </div>
@@ -590,7 +591,6 @@
         <div class="modal-box large">
             <h2 style="color: var(--admin-color)">📊 ఆదాయ నివేదిక</h2>
 
-            <!-- Date filter -->
             <div class="admin-section" style="background: #f8fafc;">
                 <h3 style="margin-bottom: 10px;">📅 తేదీని ఎంచుకోండి</h3>
                 <div class="date-inputs" style="display: flex; gap: 10px; flex-wrap: wrap;">
@@ -606,7 +606,6 @@
                 <div id="rep-db-status" style="font-size:12px; color:#64748b; margin-top:8px; text-align:center;"></div>
             </div>
 
-            <!-- Summary totals -->
             <div class="live-stats" id="rep-summary-box">
                 <div style="font-size:13px; color:#64748b; margin-bottom:8px; text-align:right;" id="rep-source-label"></div>
                 <div class="report-row"><span>పార్క్ చేసిన వాహనాలు:</span> <strong id="rep-handled">0</strong></div>
@@ -619,7 +618,6 @@
                 </div>
             </div>
 
-            <!-- Day-wise breakdown table -->
             <div class="admin-section" style="padding: 0; overflow: hidden;">
                 <h3 style="padding: 12px 15px; margin:0; background:#f8fafc; border-bottom:1px solid #e2e8f0;">📅 రోజువారీ వివరాలు (Firebase నుండి)</h3>
                 <div style="overflow-x:auto; max-height: 320px; overflow-y:auto;">
@@ -702,13 +700,21 @@
         
         let currentShift = { active: false, username: "", name: "", role: "", loginTime: null, logoutTime: null, handled: 0, cash: 0, online: 0, passUsage: 0 };
         
-        // ADMIN TABS NO LONGER WIPE THEMSELVES - LocalStorage forced for everyone.
         const savedSession = localStorage.getItem('parkingShiftSession');
         
         if(savedSession) {
             try {
-                currentShift = JSON.parse(savedSession);
-                if(currentShift.role === 'tester') { isTester = true; }
+                let parsed = JSON.parse(savedSession);
+                // FIX: Stale LocalStorage Trap (Cross-Day Compounding)
+                const todayStr = new Date().toDateString();
+                const shiftStr = new Date(parsed.loginTime).toDateString();
+                
+                if (todayStr !== shiftStr) {
+                    clearLocalSession();
+                } else {
+                    currentShift = parsed;
+                    if(currentShift.role === 'tester') { isTester = true; }
+                }
             } catch (e) {
                 clearLocalSession();
             }
@@ -717,7 +723,7 @@
         function saveSessionLocally() {
             if (!currentShift || !currentShift.active) return;
             localStorage.setItem('parkingShiftSession', JSON.stringify(currentShift));
-            sessionStorage.removeItem('parkingShiftSession'); // Cleanup legacy if exists
+            sessionStorage.removeItem('parkingShiftSession'); 
         }
 
         function clearLocalSession() {
@@ -733,14 +739,13 @@
         }
 
         let spots = Array.from({length: TOTAL_SPOTS}, (_, i) => ({ id: i + 1, isOccupied: false, plate: '', personName: '', phone: '', type: null, entryTime: null, hasPass: false }));
-        let shiftHistory = [];
+        let shiftHistory = []; // Pulled for display, but no longer directly uploaded to prevent zombie array overwrites
         let currentReportData = { handled: 0, cash: 0, online: 0, passUsage: 0, shifts: [], grouped: {} };
         let currentActiveSpot = null;
         let timerInterval = null;
         let currentFeeCalculation = 0;
         let appliedDiscountAmount = 0;
 
-        // Reset body class after every print so the dashboard UI is restored
         window.addEventListener('afterprint', () => { document.body.className = ''; });
 
         function escapeHTML(str) {
@@ -750,7 +755,6 @@
             );
         }
 
-        // 📷 ANPR / OCR SCANNER INTEGRATION
         async function processPlateImage(event) {
             const file = event.target.files[0];
             if (!file) return;
@@ -793,15 +797,12 @@
         function sendWhatsAppReceipt(phone, messageText, afterCallback) {
             let cleanPhone = phone.replace(/\D/g, '');
             if (cleanPhone.length === 10) { cleanPhone = '91' + cleanPhone; }
-            // FIX 2: must be exactly 12 digits (91 + 10-digit number); reject anything else
             if (cleanPhone.length !== 12) {
                 alert("దయచేసి సరైన 10 అంకెల ఫోన్ నంబర్‌ను ఎంటర్ చేయండి. వాట్సాప్ మెసేజ్ రద్దు చేయబడింది.");
                 return;
             }
             const text = encodeURIComponent(messageText);
-            // whatsapp:// opens the app directly without opening a browser tab
             window.location.href = 'whatsapp://send?phone=' + cleanPhone + '&text=' + text;
-            // After the user sends and returns from WhatsApp, fire the callback
             if (typeof afterCallback === 'function') {
                 setTimeout(afterCallback, 2500);
             }
@@ -832,11 +833,7 @@
             if (cleanPhone.length === 10) { cleanPhone = '91' + cleanPhone; }
 
             showToast('WhatsApp తెరుచుకుంటోంది... 2.5 సెకన్ల తర్వాత ప్రింట్ మొదలవుతుంది.');
-
-            // Open WhatsApp app directly — no browser tab
             window.location.href = 'whatsapp://send?phone=' + cleanPhone + '&text=' + encodeURIComponent(msg);
-
-            // Auto-proceed to print after returning from WhatsApp
             setTimeout(() => { printShiftSummary(); }, 2500);
         }
 
@@ -849,9 +846,7 @@
                     for(let i=0; i<TOTAL_SPOTS; i++) {
                         if(!spots[i]) spots[i] = { id: i + 1, isOccupied: false, plate: '', personName: '', phone: '', type: null, entryTime: null, hasPass: false };
                     }
-                } else if(!isTester) {
-                    // spots key missing, keep local
-                }
+                } 
                 if(data.globalStats) globalStats = data.globalStats;
                 if(data.shiftHistory) shiftHistory = data.shiftHistory;
                 if(data.activeSessions) activeSessions = data.activeSessions; else activeSessions = {};
@@ -893,12 +888,10 @@
                 settings: systemSettings || {}, 
                 spots: cleanSpots, 
                 globalStats: globalStats || { totalEntered: 0, totalLeft: 0, totalCash: 0, totalOnline: 0, totalPass: 0 }, 
-                shiftHistory: shiftHistory || [],
                 passes: passes || {},
                 customerDB: customerDB || {}
             }).catch(e => console.error("Cloud push error:", e));
 
-            // ADMINS ARE NO LONGER EXCLUDED - Live sync is enabled for owner accounts
             if(currentShift && currentShift.active && currentShift.role !== 'tester') {
                 db.ref('/activeSessions/' + currentShift.username).set(currentShift).catch(e => console.error(e));
             }
@@ -914,7 +907,6 @@
                     updated++;
                 }
             });
-            // FIX 4: push updated entryTimes to Firebase so simulation is visible across tabs
             if (!isTester) {
                 firebase.database().ref('/spots').set(spotsArray).catch(e => console.error(e));
             } else {
@@ -968,7 +960,7 @@
                 let id = (phone.length >= 10) ? phone : safePlate;
                 if (!customerDB) customerDB = {};
                 customerDB[id] = {
-                    name: phone || plate || '--', // FIX 3: use phone as name identifier, fall back to plate
+                    name: phone || plate || '--',
                     phone: phone || "--",
                     plate: plate || "--",
                     lastSeen: Date.now()
@@ -1021,13 +1013,8 @@
             const todayStart = new Date().setHours(0, 0, 0, 0);
             const todayEnd   = new Date().setHours(23, 59, 59, 999);
             let tHandled = 0; let tCash = 0; let tOnline = 0; let tPass = 0;
-
-            // De-duplicate by loginTime — one unique timestamp per real session.
-            // This prevents ghost sessions (no loginTime or stale loginTime from a previous day)
-            // and overnight shifts (loginTime yesterday, logoutTime today) from inflating today.
             const seenLoginTimes = new Set();
 
-            // 1. Current operator — freshest local data, processed first.
             if (currentShift && currentShift.active && currentShift.role !== 'tester') {
                 const lt = currentShift.loginTime;
                 if (lt && lt >= todayStart && lt <= todayEnd) {
@@ -1039,8 +1026,6 @@
                 }
             }
 
-            // 2. Other live sessions — must have a loginTime that falls within today.
-            //    Ghost sessions (no loginTime, or loginTime from a previous day) are excluded.
             if (activeSessions) {
                 Object.values(activeSessions).forEach(session => {
                     if (!session || session.role === 'tester') return;
@@ -1056,8 +1041,6 @@
                 });
             }
 
-            // 3. Completed shifts — filter by loginTime so overnight shifts are excluded.
-            //    A shift that started yesterday and ended today belongs to yesterday, not today.
             let historyArray = Array.isArray(shiftHistory) ? shiftHistory : Object.values(shiftHistory || {});
             historyArray.forEach(shift => {
                 if (!shift) return;
@@ -1106,8 +1089,6 @@
             let totals = getTodayTotals();
             let spotsArray = Array.isArray(spots) ? spots : Object.values(spots || {});
             let inLot = spotsArray.filter(s => s && s.isOccupied).length;
-
-            // totalEntered = vehicles that left today (handled) + vehicles currently in lot
             let totalEnteredToday = totals.tHandled + inLot;
 
             document.getElementById('dash-total-entered').innerText = totalEnteredToday;
@@ -1233,7 +1214,7 @@
             document.getElementById('pass-search-id').value = '';
             document.getElementById('pass-recharge-amount').value = '';
             document.getElementById('pass-new-name').value = '';
-            document.getElementById('pass-vehicle-number').value = ''; // FIX 1: clear vehicle field on open
+            document.getElementById('pass-vehicle-number').value = ''; 
             
             document.getElementById('pass-details').style.display = 'none';
             document.getElementById('pass-register').style.display = 'none';
@@ -1248,7 +1229,6 @@
                 document.getElementById('pass-display-name').innerText = escapeHTML(passes[id].name);
                 document.getElementById('pass-display-balance').innerText = parseFloat(passes[id].balance || 0).toFixed(2);
                 document.getElementById('pass-display-used').innerText = parseFloat(passes[id].used || 0).toFixed(2);
-                // Pre-fill vehicle number if saved
                 if (passes[id].vehicle) {
                     document.getElementById('pass-vehicle-number').value = passes[id].vehicle;
                 } else {
@@ -1272,8 +1252,6 @@
             const newVehicle = (document.getElementById('pass-vehicle-number').value || '').trim();
             passes[id] = { name: name, balance: 0, used: 0, vehicle: newVehicle };
             
-            // FIX 5: targeted write instead of pushToCloud() — avoids race condition overwriting
-            // fresh Firebase data with stale local state (same fix applied to rechargePass).
             if (!isTester) {
                 firebase.database().ref('/passes/' + id).set(passes[id]).catch(e => console.error('New pass sync error:', e));
             }
@@ -1291,8 +1269,6 @@
             if (!passes[id]) return alert("పాస్ అకౌంట్ దొరకలేదు.");
 
             passes[id].balance = parseFloat(passes[id].balance || 0) + amount;
-
-            // Save vehicle number if entered
             const vehicleNo = (document.getElementById('pass-vehicle-number').value || '').trim();
             if (vehicleNo) passes[id].vehicle = vehicleNo;
 
@@ -1306,9 +1282,6 @@
             
             saveSessionLocally();
 
-            // BUG FIX: Write directly to the specific pass node instead of pushToCloud()
-            // pushToCloud() triggers a full DB rewrite which can race against the real-time
-            // listener and overwrite the updated balance with stale data from V1/other tabs.
             if (!isTester) {
                 firebase.database().ref('/passes/' + id).set(passes[id]).catch(e => console.error('Pass recharge sync error:', e));
                 firebase.database().ref('/globalStats').set(globalStats).catch(e => console.error(e));
@@ -1504,38 +1477,44 @@
             closeModals();
         }
 
-        function submitCheckout() {
+        function submitCheckout(btnElement) {
             if (!currentActiveSpot || !currentActiveSpot.isOccupied) return;
+            if (btnElement) btnElement.disabled = true; // Fix: Double-click checkout protection
 
             const method = document.getElementById('input-payment-method').value;
 
-            // PASS: fetch live balance from Firebase before proceeding — another tab may have
-            // recharged or deducted since the last local sync, causing a stale-read overdraft.
             if (method === 'PASS') {
                 const phone = currentActiveSpot.phone;
-                if (!phone) return alert("కస్టమర్ ఫోన్ నంబర్ లేదు! పాస్ వాడాలంటే ఫోన్ నంబర్ తప్పనిసరి.");
-                if (!passes || !passes[phone]) return alert("ఈ నంబర్‌కి పాస్/వాలెట్ లేదు! దయచేసి ముందుగా పాస్ క్రియేట్ చేయండి.");
+                if (!phone) {
+                    if (btnElement) btnElement.disabled = false;
+                    return alert("కస్టమర్ ఫోన్ నంబర్ లేదు! పాస్ వాడాలంటే ఫోన్ నంబర్ తప్పనిసరి.");
+                }
+                if (!passes || !passes[phone]) {
+                    if (btnElement) btnElement.disabled = false;
+                    return alert("ఈ నంబర్‌కి పాస్/వాలెట్ లేదు! దయచేసి ముందుగా పాస్ క్రియేట్ చేయండి.");
+                }
                 db.ref('/passes/' + phone).once('value').then(snap => {
                     const fresh = snap.val();
                     if (fresh) passes[phone] = fresh;
-                    _doCheckout(method);
-                }).catch(() => { _doCheckout(method); });
+                    _doCheckout(method, btnElement);
+                }).catch(() => { _doCheckout(method, btnElement); });
                 return;
             }
-            _doCheckout(method);
+            _doCheckout(method, btnElement);
         }
 
-        function _doCheckout(method) {
-            if (!currentActiveSpot || !currentActiveSpot.isOccupied) return;
+        function _doCheckout(method, btnElement) {
+            if (!currentActiveSpot || !currentActiveSpot.isOccupied) {
+                if (btnElement) btnElement.disabled = false;
+                return;
+            }
             let cashReceived = 0; let changeDue = 0;
 
             if (method === 'PASS') {
                 const phone = currentActiveSpot.phone;
-                if (!phone) return alert("కస్టమర్ ఫోన్ నంబర్ లేదు! పాస్ వాడాలంటే ఫోన్ నంబర్ తప్పనిసరి.");
-                if (!passes || !passes[phone]) return alert("ఈ నంబర్‌కి పాస్/వాలెట్ లేదు! దయచేసి ముందుగా పాస్ క్రియేట్ చేయండి.");
-                
                 let currentBal = parseFloat(passes[phone].balance || 0);
                 if (currentBal < currentFeeCalculation && currentFeeCalculation > 0) {
+                    if (btnElement) btnElement.disabled = false;
                     return alert(`పాస్ బ్యాలెన్స్ సరిపోదు!\n\nబ్యాలెన్స్: ₹${currentBal.toFixed(2)}\nరుసుము: ₹${currentFeeCalculation.toFixed(2)}`);
                 }
                 
@@ -1553,8 +1532,14 @@
                     } else {
                         cashReceived = parseFloat(cashInputStr) || 0;
                     }
-                    if (cashReceived < 0) return alert("నగదు మైనస్‌లో ఉండకూడదు.");
-                    if (cashReceived < currentFeeCalculation && currentFeeCalculation > 0) return alert(`సరిపోని నగదు! రుసుము ₹${currentFeeCalculation}`);
+                    if (cashReceived < 0) {
+                        if (btnElement) btnElement.disabled = false;
+                        return alert("నగదు మైనస్‌లో ఉండకూడదు.");
+                    }
+                    if (cashReceived < currentFeeCalculation && currentFeeCalculation > 0) {
+                        if (btnElement) btnElement.disabled = false;
+                        return alert(`సరిపోని నగదు! రుసుము ₹${currentFeeCalculation}`);
+                    }
                     changeDue = cashReceived - currentFeeCalculation;
                 }
                 
@@ -1572,8 +1557,6 @@
             
             saveSessionLocally();
 
-            // BUG FIX: Declare spotId and spotPhone HERE, before the receipt HTML is built,
-            // so spotPhone is available when rendering the pass balance line in the receipt.
             const spotId = currentActiveSpot.id;
             const spotPhone = currentActiveSpot.phone;
 
@@ -1628,7 +1611,6 @@
                 if(method === 'PASS') firebase.database().ref('/passes/' + spotPhone).set(passes[spotPhone]);
                 firebase.database().ref('/globalStats').set(globalStats);
                 
-                // ADMIN CHECKOUTS ARE NO LONGER HIDDEN FROM LIVE DASHBOARD 
                 if(currentShift.active && currentShift.role !== 'tester') {
                     db.ref('/activeSessions/' + currentShift.username).set(currentShift).catch(e => console.error(e));
                 }
@@ -1756,7 +1738,6 @@
             setTimeout(() => { window.print(); }, 500);
         }
 
-        // 🚨 CRITICAL FIX: ADMINS CAN NOW SAVE SHIFTS SECURELY 
         async function executeSecureLogout(isShiftEnd = false) {
             try {
                 let alertMsg = "";
@@ -1769,27 +1750,26 @@
 
                 let usernameToRemove = currentShift.username;
                 let wasTester = isTester;
+                let newShift = null;
 
-                // Removed currentShift.role !== 'admin' - ADMIN SHIFTS ARE NOW RECORDED!
                 if (isShiftEnd && currentShift.role !== 'tester') {
                     let spotsArray = Array.isArray(spots) ? spots : Object.values(spots || {});
                     let occupiedCount = spotsArray.filter(s => s && s.isOccupied).length;
 
-                    if (!shiftHistory) shiftHistory = [];
-                    else if (!Array.isArray(shiftHistory)) shiftHistory = Object.values(shiftHistory);
-
-                    shiftHistory.push({ 
-                        name: finalName,
-                        username: currentShift.username || "",
-                        loginTime: currentShift.loginTime || Date.now(),
-                        logoutTime: Date.now(), 
-                        handled: finalHandled, 
-                        leftInLot: occupiedCount,
-                        cash: c, 
-                        online: o,
-                        passUsage: p
-                    });
-                    
+                    // FIX: Admin Zero-Shift prevention (Skips logging $0 admin checks)
+                    if (finalHandled > 0 || finalSubTotal > 0 || p > 0) {
+                        newShift = { 
+                            name: finalName,
+                            username: currentShift.username || "",
+                            loginTime: currentShift.loginTime || Date.now(),
+                            logoutTime: Date.now(), 
+                            handled: finalHandled, 
+                            leftInLot: occupiedCount,
+                            cash: c, 
+                            online: o,
+                            passUsage: p
+                        };
+                    }
                     alertMsg = `✅ షిఫ్ట్ విజయవంతంగా ముగిసింది!\n\nఆపరేటర్: ${finalName}\nపంపిన వాహనాలు: ${finalHandled}\nసబ్-టోటల్: ₹${finalSubTotal.toFixed(2)}`;
                 } else {
                     alertMsg = "లాగౌట్ విజయవంతంగా పూర్తయింది.";
@@ -1800,16 +1780,20 @@
                     document.getElementById('cloud-loader').style.display = 'flex';
 
                     let cleanSpots = Array.isArray(spots) ? spots : Object.values(spots || {});
-                    let cleanShiftHistory = Array.isArray(shiftHistory) ? shiftHistory : Object.values(shiftHistory || []);
 
+                    // FIX: Zombie History Prevention. Remove shiftHistory from the full update block.
                     await db.ref('/').update({ 
                         settings: systemSettings || {}, 
                         spots: cleanSpots, 
                         globalStats: globalStats || { totalEntered: 0, totalLeft: 0, totalCash: 0, totalOnline: 0, totalPass: 0 }, 
-                        shiftHistory: cleanShiftHistory,
                         passes: passes || {},
                         customerDB: customerDB || {}
                     });
+
+                    // Target the exact push ID array so older history isn't overwritten by local arrays
+                    if (newShift) {
+                        await db.ref('/shiftHistory').push(newShift);
+                    }
 
                     if (usernameToRemove) {
                         await db.ref('/activeSessions/' + usernameToRemove).remove();
@@ -1831,9 +1815,6 @@
         }
 
         function adminDirectLogout() {
-            // Pass true so admin shift is written to shiftHistory before clearing the session.
-            // Previously called with false (isShiftEnd=false) which silently dropped all admin
-            // revenue from reports.
             executeSecureLogout(true);
         }
 
@@ -1857,7 +1838,6 @@
                 
                 saveSessionLocally();
                 
-                // Removed currentShift.role !== 'admin'
                 if (currentShift.role !== 'tester') {
                     db.ref('/activeSessions/' + currentShift.username).onDisconnect().remove();
                 }
@@ -2009,7 +1989,7 @@
                 start = end;
             } else if (type === 'week') {
                 const d = new Date();
-                d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); // Monday-start (India)
+                d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); 
                 start = getLocalDateString(d);
             } else if(type === 'month') {
                 const d = new Date();
@@ -2022,7 +2002,6 @@
             calculateReport();
         }
 
-        // 🔥 REPORT ENGINE — pulls fresh from Firebase every time
         function calculateReport() {
             const startVal = document.getElementById('rep-start-date').value;
             const endVal   = document.getElementById('rep-end-date').value;
@@ -2038,7 +2017,6 @@
             const startTs = new Date(+sParts[0], +sParts[1]-1, +sParts[2], 0,  0,  0,   0).getTime();
             const endTs   = new Date(+eParts[0], +eParts[1]-1, +eParts[2], 23, 59, 59, 999).getTime();
 
-            // Pull shiftHistory and activeSessions fresh from Firebase
             Promise.all([
                 db.ref('/shiftHistory').once('value'),
                 db.ref('/activeSessions').once('value')
@@ -2054,38 +2032,26 @@
                 let liveSessionsArray = [];
                 if (sessData) {
                     Object.values(sessData).forEach(s => {
-                        // Exclude tester AND current user — current user re-added explicitly below.
                         if (s && s.role !== 'tester' && s.username !== currentShift.username) liveSessionsArray.push(s);
                     });
                 }
 
-                // --- Aggregate by operator-shift ---
-                // dayMap: { "YYYY-MM-DD": { displayKey: { handled, cash, online, pass, isLive, loginTime } } }
-                // seenLoginTimes: tracks loginTime of every session added — prevents the same shift
-                // from being counted twice when it exists in both shiftHistory and activeSessions
-                // (e.g. during logout race or admin sessions that write to both paths).
                 const dayMap = {};
                 const seenLoginTimes = new Set();
 
                 function addToDay(dateStr, name, h, c, o, p, isLive, loginTime) {
-                    // De-duplicate by loginTime: each unique login session counted only once.
-                    // Live sessions take priority over history entries for the same loginTime
-                    // (they have fresher figures), so live entries are processed first.
-                    const loginKey = loginTime ? String(loginTime) : null;
-                    if (loginKey) {
-                        if (seenLoginTimes.has(loginKey)) return; // already counted — skip
-                        seenLoginTimes.add(loginKey);
-                    }
+                    // FIX: Deduplication Bypass patched by forcing a fallback key.
+                    const loginKey = loginTime ? String(loginTime) : `${name}_${c}_${o}`; 
+                    
+                    if (seenLoginTimes.has(loginKey)) return; 
+                    seenLoginTimes.add(loginKey);
 
                     if (!dayMap[dateStr]) dayMap[dateStr] = {};
-                    // Key on name only (no emoji) so a shift that transitions from live→completed
-                    // within the same report window merges into a single row rather than producing
-                    // a stale 🟢 row alongside a finished row for the same operator.
+                    
                     const key = name;
                     if (!dayMap[dateStr][key]) {
                         dayMap[dateStr][key] = { handled:0, cash:0, online:0, pass:0, isLive, loginTime };
                     }
-                    // If any sub-entry for this key is still live, keep the row marked live.
                     if (isLive) dayMap[dateStr][key].isLive = true;
                     dayMap[dateStr][key].handled += (h || 0);
                     dayMap[dateStr][key].cash    += parseFloat(c || 0);
@@ -2093,8 +2059,6 @@
                     dayMap[dateStr][key].pass    += parseFloat(p || 0);
                 }
 
-                // Process live / active shifts FIRST so their loginTime is registered in
-                // seenLoginTimes before history is processed — live data is always fresher.
                 liveSessionsArray.forEach(shift => {
                     if (!shift) return;
                     const refTime = shift.loginTime || Date.now();
@@ -2104,8 +2068,6 @@
                     addToDay(dateStr, shift.name || 'Unknown', shift.handled, shift.cash, shift.online, shift.passUsage, true, shift.loginTime);
                 });
 
-                // Current operator excluded from liveSessionsArray (Bug 6 fix) — re-add once here
-                // using local currentShift for the freshest figures.
                 if (currentShift && currentShift.active && currentShift.role !== 'tester') {
                     const refTime = currentShift.loginTime || Date.now();
                     if (refTime >= startTs && refTime <= endTs) {
@@ -2114,12 +2076,8 @@
                     }
                 }
 
-                // Process completed shifts AFTER live — any shift whose loginTime was already
-                // registered above (live/current) will be silently skipped, eliminating double-count.
                 historyArray.forEach(shift => {
                     if (!shift || !shift.logoutTime) return;
-                    // Gate and bucket by loginTime: overnight shifts (login yesterday, logout today)
-                    // land on the correct calendar date and are excluded from ranges that don't cover it.
                     const refTime = shift.loginTime || shift.logoutTime;
                     if (refTime < startTs || refTime > endTs) return;
                     const d = new Date(refTime);
@@ -2127,7 +2085,6 @@
                     addToDay(dateStr, shift.name || 'Unknown', shift.handled, shift.cash, shift.online, shift.passUsage, false, shift.loginTime);
                 });
 
-                // --- Build totals and render table ---
                 let totalHandled = 0, totalCash = 0, totalOnline = 0, totalPass = 0;
 
                 const sortedDates = Object.keys(dayMap).sort();
@@ -2137,7 +2094,6 @@
                     tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:20px;color:#94a3b8;">ఈ తేదీల్లో ఎలాంటి సమాచారం లేదు.</td></tr>';
                     document.getElementById('rep-daywise-foot').style.display = 'none';
                 } else {
-                    // Group rows by date with sub-rows per operator
                     sortedDates.forEach((dateStr, di) => {
                         const ops = dayMap[dateStr];
                         const opNames = Object.keys(ops);
@@ -2174,7 +2130,6 @@
                             tbody.innerHTML += tr;
                         });
 
-                        // Day sub-total row
                         if (opNames.length > 1) {
                             tbody.innerHTML += `
                                 <tr style="background:#fef9ec; border-bottom:2px solid #e2e8f0;">
@@ -2191,7 +2146,6 @@
                         totalHandled += dayHandled; totalCash += dayCash; totalOnline += dayOnline; totalPass += dayPass;
                     });
 
-                    // Footer totals
                     document.getElementById('rep-daywise-foot').style.display = '';
                     document.getElementById('foot-handled').innerText = totalHandled;
                     document.getElementById('foot-cash').innerText    = '₹' + totalCash.toFixed(2);
@@ -2200,7 +2154,6 @@
                     document.getElementById('foot-total').innerText   = '₹' + (totalCash + totalOnline).toFixed(2);
                 }
 
-                // Update summary cards
                 document.getElementById('rep-handled').innerText = totalHandled;
                 document.getElementById('rep-cash').innerText    = totalCash.toFixed(2);
                 document.getElementById('rep-online').innerText  = totalOnline.toFixed(2);
@@ -2213,7 +2166,6 @@
                     (liveCount > 0 ? ` + ${liveCount} లైవ్ సెషన్లు` : '');
                 statusEl.innerHTML = `✅ ${new Date().toLocaleTimeString('te-IN')} కు అప్‌డేట్ చేయబడింది`;
 
-                // Save for print/export
                 currentReportData = {
                     startDate: startVal, endDate: endVal,
                     handled: totalHandled, cash: totalCash, online: totalOnline, passUsage: totalPass,
@@ -2302,6 +2254,11 @@
 
         function closeModals() {
             document.querySelectorAll('.modal-overlay').forEach(m => m.style.display = 'none');
+            
+            // Un-disable checkout submit button in case it was locked by error condition
+            const checkOutBtn = document.getElementById('btn-checkout-submit');
+            if (checkOutBtn) checkOutBtn.disabled = false;
+            
             if(timerInterval) { clearInterval(timerInterval); timerInterval = null; }
             currentActiveSpot = null;
         }
