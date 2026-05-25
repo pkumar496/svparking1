@@ -1700,17 +1700,38 @@
 
             document.getElementById('receipt-body').innerHTML = printHTML;
 
-            // Update customerDB checkOut time for this vehicle
-            // Normalize spotPhone to 10-digit key (strip leading 91 if present)
-            const normSpotPhone = spotPhone && spotPhone.length === 12 && spotPhone.startsWith('91') ? spotPhone.slice(2) : (spotPhone || '');
-            const spotPlate = (currentActiveSpot.plate || '').toUpperCase().replace(/[.#$\[\]]/g, '');
-            const dbKey = (normSpotPhone && customerDB && customerDB[normSpotPhone])
-                ? normSpotPhone
-                : (spotPlate && customerDB && customerDB[spotPlate] ? spotPlate : null);
-            if (dbKey && customerDB && customerDB[dbKey]) {
-                customerDB[dbKey].checkOut = Date.now();
-                if (!isTester) {
-                    firebase.database().ref('/customerDB/' + dbKey).update({ checkOut: Date.now() }).catch(e => console.error(e));
+            // Update customerDB checkOut time — write directly using spot's phone or plate as key.
+            // Always upsert so checkout is captured even if the check-in DB write was delayed.
+            {
+                const normSpotPhone = (spotPhone || '').replace(/\D/g, '');
+                // Use 10-digit phone as key if available, else fall back to plate
+                const coKey = (normSpotPhone.length >= 10)
+                    ? normSpotPhone.slice(-10)
+                    : (currentActiveSpot.plate || '').toUpperCase().replace(/[.#$\[\]]/g, '');
+
+                if (coKey) {
+                    const checkOutTime = Date.now();
+                    // Update local cache
+                    if (!customerDB) customerDB = {};
+                    if (!customerDB[coKey]) {
+                        // Create record if missing (check-in DB write may not have landed yet)
+                        customerDB[coKey] = {
+                            plate: currentActiveSpot.plate || '--',
+                            vehicleType: currentActiveSpot.type || null,
+                            slotNo: currentActiveSpot.id || null,
+                            checkIn: currentActiveSpot.entryTime || checkOutTime,
+                            checkOut: checkOutTime
+                        };
+                    } else {
+                        customerDB[coKey].checkOut = checkOutTime;
+                        if (currentActiveSpot.id) customerDB[coKey].slotNo = currentActiveSpot.id;
+                    }
+                    // Always write to Firebase directly — don't rely on local cache lookup
+                    if (!isTester) {
+                        firebase.database().ref('/customerDB/' + coKey)
+                            .update({ checkOut: checkOutTime, slotNo: currentActiveSpot.id || null })
+                            .catch(e => console.error('customerDB checkOut write failed:', e));
+                    }
                 }
             }
 
