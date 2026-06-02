@@ -292,6 +292,11 @@
                     <h4 style="color: #a7f3d0;">ఈరోజు మొత్తం కలెక్షన్</h4>
                     <p class="dash-val" style="color: #34d399; font-size: 34px;" id="dash-grand-total">₹0</p>
                     <span style="font-size: 11px; color:#94a3b8; display: block; margin-top: 5px;">(నగదు + ఆన్‌లైన్ మాత్రమే)</span>
+                    <span style="font-size: 10px; color:#64748b; display: block; margin-top: 4px;" id="dash-last-updated">--</span>
+                    <button onclick="refreshDashboardFromFirebase()" id="dash-refresh-btn"
+                        style="margin-top: 10px; width: 100%; padding: 7px; background: rgba(52,211,153,0.2); border: 1px solid rgba(52,211,153,0.4); color: #34d399; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: bold;">
+                        🔄 Firebase నుండి రీఫ్రెష్
+                    </button>
                 </div>
 
 
@@ -901,7 +906,23 @@
                 if(data.passes && !checkoutInProgress) passes = data.passes; else if(!data.passes) passes = {};
                 if(data.customerDB) customerDB = data.customerDB; else customerDB = {};
             } else if (!isTester) {
-                pushToCloud(); 
+                // REVENUE SAFETY FIX v3.8.3.8.2:
+                // After a system restart, Firebase may briefly return null for the root node
+                // while reconnecting. At that moment, in-memory globalStats = zeros (defaults).
+                // The original pushToCloud() here would overwrite real cloud revenue with zeros.
+                // Fix: Check if globalStats already exists in Firebase before initializing.
+                // Only call pushToCloud() if this is truly a brand-new / empty database.
+                db.ref('/globalStats').once('value').then(function(gsSnap) {
+                    if (!gsSnap.exists()) {
+                        // Truly empty database (first-ever use) — safe to initialize
+                        pushToCloud();
+                    }
+                    // If globalStats exists in cloud, do NOT overwrite — the on('value')
+                    // listener will populate in-memory state correctly once data arrives.
+                }).catch(function(err) {
+                    console.warn('Revenue safety check failed, falling back to pushToCloud:', err);
+                    pushToCloud();
+                });
             }
             document.getElementById('cloud-loader').style.display = 'none';
             
@@ -1135,6 +1156,33 @@
             }
             dash.style.display = 'block';
 
+            // FIX v3.8.3.8.2.2: If shiftHistory is still empty right after login/page-load,
+            // the in-memory state hasn't been populated by the Firebase listener yet.
+            // Silently fetch today's history from Firebase and re-render — this prevents
+            // the dashboard showing ₹0 revenue immediately after a logout+login cycle.
+            const histArr = Array.isArray(shiftHistory) ? shiftHistory : Object.values(shiftHistory || {});
+            if (histArr.length === 0 && !isTester) {
+                const todayStart = new Date().setHours(0, 0, 0, 0);
+                const todayEnd   = new Date().setHours(23, 59, 59, 999);
+                db.ref('/shiftHistory').orderByChild('logoutTime').startAt(todayStart).endAt(todayEnd).once('value').then(snap => {
+                    if (snap.exists()) {
+                        const fetched = snap.val();
+                        const fetchedArr = Array.isArray(fetched) ? fetched : Object.values(fetched);
+                        // Merge into shiftHistory without overwriting entries already arrived via listener
+                        const existingArr = Array.isArray(shiftHistory) ? shiftHistory : Object.values(shiftHistory || {});
+                        const merged = {};
+                        [...existingArr, ...fetchedArr].forEach(s => {
+                            if (!s || !s.loginTime) return;
+                            const k = (s.username || s.name || '') + '_' + s.loginTime;
+                            if (!merged[k] || fetchedArr.includes(s)) merged[k] = s;
+                        });
+                        shiftHistory = Object.values(merged);
+                        updateLiveAdminDashboard(); // re-render with real data
+                    }
+                }).catch(e => console.warn('Dashboard auto-fetch failed:', e));
+                // Render with whatever we have now (may be zeros), will re-render above when data arrives
+            }
+
             document.getElementById('dash-date').innerText = new Date().toLocaleDateString('te-IN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 
             const userListDiv = document.getElementById('dash-active-users');
@@ -1169,7 +1217,55 @@
             document.getElementById('dash-online').innerText      = `₹${totals.tOnline.toFixed(2)}`;
             document.getElementById('dash-pass').innerText        = `₹${totals.tPass.toFixed(2)}`;
             document.getElementById('dash-grand-total').innerText = `₹${(totals.tCash + totals.tOnline).toFixed(0)}`;
+            const updEl = document.getElementById('dash-last-updated');
+            if (updEl) updEl.innerText = 'అప్డేట్: ' + new Date().toLocaleTimeString('te-IN', {hour:'2-digit', minute:'2-digit', second:'2-digit'});
 
+        }
+
+        // FIREBASE LIVE REFRESH: Explicitly re-fetch today's shiftHistory + activeSessions
+        // and rebuild the dashboard. Safe to call any time - read-only, no writes.
+        async function refreshDashboardFromFirebase() {
+            const btn = document.getElementById('dash-refresh-btn');
+            if (btn) { btn.disabled = true; btn.innerText = 'రీఫ్రెష్ అవుతోన్నది...'; }
+
+            try {
+                const todayStart = new Date().setHours(0, 0, 0, 0);
+                const todayEnd   = new Date().setHours(23, 59, 59, 999);
+
+                const [histSnap, sessSnap] = await Promise.all([
+                    // FIX v3.8.3.8.2.2: Query by logoutTime (revenue day) so shifts that logged in
+                    // yesterday but were checked out today are included in today's dashboard totals.
+                    db.ref('/shiftHistory').orderByChild('logoutTime').startAt(todayStart).endAt(todayEnd).once('value'),
+                    db.ref('/activeSessions').once('value')
+                ]);
+
+                // Merge freshly fetched data into in-memory state
+                const freshHist = histSnap.val();
+                if (freshHist) {
+                    const freshArr = Array.isArray(freshHist) ? freshHist : Object.values(freshHist);
+                    // Merge: keep existing entries not overridden
+                    const existingArr = Array.isArray(shiftHistory) ? shiftHistory : Object.values(shiftHistory || {});
+                    const merged = {};
+                    [...existingArr, ...freshArr].forEach(s => {
+                        if (!s || !s.loginTime) return;
+                        const key = (s.username || s.name || '') + '_' + s.loginTime;
+                        // Fresh data wins over stale in-memory copy
+                        if (!merged[key] || freshArr.includes(s)) merged[key] = s;
+                    });
+                    shiftHistory = Object.values(merged);
+                }
+
+                const freshSess = sessSnap.val();
+                if (freshSess) activeSessions = freshSess;
+
+                updateLiveAdminDashboard();
+                showToast('✅ Firebase నుండి తాజా డేటా తెచ్చుకున్నది!');
+            } catch(e) {
+                console.error('Dashboard refresh error:', e);
+                showToast('❌ రిఫ్రెష్ విఫలమైంది. ఇంటర్నెట్ చెక్ చేసుకోండి.', false);
+            } finally {
+                if (btn) { btn.disabled = false; btn.innerText = '🔄 Firebase నుండి రీఫ్రెష్'; }
+            }
         }
 
         function showToast(message, isSuccess = true) {
@@ -2264,9 +2360,15 @@
 
                 historyArray.forEach(shift => {
                     if (!shift || !shift.logoutTime) return;
-                    const refTime = shift.loginTime || shift.logoutTime;
+                    // FIX v3.8.3.8.2.2: Use the same logoutTime-biased refTime as getTodayTotals()
+                    // so cross-midnight shifts (login=yesterday, logout=today) are bucketed into
+                    // the correct day and NOT silently dropped from "today / this week / this month".
+                    const lo = shift.logoutTime;
+                    const lt = shift.loginTime || lo;
+                    const refTime = (lo >= startTs && lo <= endTs) ? lo : lt;
                     if (refTime < startTs || refTime > endTs) return;
-                    const d = new Date(refTime);
+                    // Bucket the row under the logout date (revenue day), not the login date.
+                    const d = new Date((lo >= startTs && lo <= endTs) ? lo : lt);
                     const dateStr = getLocalDateString(d);
                     addToDay(dateStr, shift.name || 'Unknown', shift.handled, shift.cash, shift.online, shift.passUsage, false, shift.loginTime, shift.username);
                 });
