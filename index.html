@@ -679,7 +679,7 @@
 
         const TOTAL_SPOTS = 300;
         let systemSettings = {
-            rates: { "2": 10.00, "3": 20.00, "4": 30.00, "5": 50.00 },
+            rates: { "2": 10.00, "3": 15.00, "4": 30.00, "5": 50.00 },
             passDiscount: 10,
             activeUpiId: "9440485256@ptyes",
             adminPhone: "",
@@ -2295,8 +2295,14 @@
             const startTs = new Date(+sParts[0], +sParts[1]-1, +sParts[2], 0,  0,  0,   0).getTime();
             const endTs   = new Date(+eParts[0], +eParts[1]-1, +eParts[2], 23, 59, 59, 999).getTime();
 
+            // FIX v3.8.3.8.2.3: Query shiftHistory by logoutTime with an expanded range
+            // (48h before startTs) so cross-boundary shifts (e.g. login=prev day/month,
+            // logout=within selected range) are always fetched from Firebase and not
+            // silently dropped. Plain .once('value') on the whole node was unreliable for
+            // large datasets and did not respect the month boundary correctly.
+            const expandedStart = startTs - 48 * 60 * 60 * 1000; // 48h buffer for overnight shifts
             Promise.all([
-                db.ref('/shiftHistory').once('value'),
+                db.ref('/shiftHistory').orderByChild('logoutTime').startAt(expandedStart).endAt(endTs).once('value'),
                 db.ref('/activeSessions').once('value')
             ]).then(([histSnap, sessSnap]) => {
                 const histData = histSnap.val();
@@ -2343,10 +2349,16 @@
 
                 liveSessionsArray.forEach(shift => {
                     if (!shift) return;
-                    const refTime = shift.loginTime || Date.now();
-                    if (refTime < startTs || refTime > endTs) return;
-                    const d = new Date(refTime);
-                    const dateStr = getLocalDateString(d);
+                    // FIX v3.8.3.8.2.3: For live sessions use loginTime (they have no logoutTime yet).
+                    // But check both login and "now" so an operator who logged in before the period
+                    // but is actively collecting revenue now is not dropped from a "today" report.
+                    const lt = shift.loginTime || Date.now();
+                    const liveNow = Date.now();
+                    const revenueTs = (lt >= startTs && lt <= endTs) ? lt
+                                    : (liveNow >= startTs && liveNow <= endTs) ? liveNow
+                                    : null;
+                    if (!revenueTs) return;
+                    const dateStr = getLocalDateString(new Date(revenueTs));
                     addToDay(dateStr, shift.name || 'Unknown', shift.handled, shift.cash, shift.online, shift.passUsage, true, shift.loginTime, shift.username);
                 });
 
@@ -2359,17 +2371,20 @@
                 }
 
                 historyArray.forEach(shift => {
-                    if (!shift || !shift.logoutTime) return;
-                    // FIX v3.8.3.8.2.2: Use the same logoutTime-biased refTime as getTodayTotals()
-                    // so cross-midnight shifts (login=yesterday, logout=today) are bucketed into
-                    // the correct day and NOT silently dropped from "today / this week / this month".
-                    const lo = shift.logoutTime;
+                    if (!shift) return;
+                    // FIX v3.8.3.8.2.3: Don't skip shifts missing logoutTime — autoSaved
+                    // entries may have loginTime only. Fall back to loginTime for bucketing.
+                    const lo = shift.logoutTime || null;
                     const lt = shift.loginTime || lo;
-                    const refTime = (lo >= startTs && lo <= endTs) ? lo : lt;
-                    if (refTime < startTs || refTime > endTs) return;
-                    // Bucket the row under the logout date (revenue day), not the login date.
-                    const d = new Date((lo >= startTs && lo <= endTs) ? lo : lt);
-                    const dateStr = getLocalDateString(d);
+                    if (!lt && !lo) return; // completely empty record, skip
+                    // Revenue day = logoutTime if it falls in range, else loginTime.
+                    // This correctly handles: same-day shifts, overnight shifts, and
+                    // month-boundary shifts (login=last day of prev month, logout=first day of this month).
+                    const revenueTs = (lo && lo >= startTs && lo <= endTs) ? lo
+                                    : (lt && lt >= startTs && lt <= endTs) ? lt
+                                    : null;
+                    if (!revenueTs) return; // shift has no timestamp inside selected range
+                    const dateStr = getLocalDateString(new Date(revenueTs));
                     addToDay(dateStr, shift.name || 'Unknown', shift.handled, shift.cash, shift.online, shift.passUsage, false, shift.loginTime, shift.username);
                 });
 
