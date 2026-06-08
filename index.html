@@ -237,6 +237,7 @@
                 <button class="btn-top btn-admin admin-only" onclick="openAdminSettings()">⚙️ సెట్టింగ్స్</button>
                 <button class="btn-top admin-only" style="background-color: var(--admin-color); color: white; border: none;" onclick="openCustomerDB()">👥 కస్టమర్ డేటాబేస్</button>
                 <button class="btn-top admin-only" onclick="openReport()">📊 రిపోర్ట్స్</button>
+                <button class="btn-top admin-only" style="background-color:#0ea5e9; color:white; border:none;" onclick="openMonthlyPasses()">🎫 మంత్లీ పాసులు</button>
             </div>
         </div>
 
@@ -321,6 +322,100 @@
             <div class="form-group"><label>పాస్‌వర్డ్</label><input type="password" id="login-pass"></div>
             <button class="btn btn-shift" onclick="attemptLogin()">లాగిన్</button>
             <button class="btn btn-gray" onclick="closeModals()">రద్దు చేయి</button>
+        </div>
+    </div>
+
+    <!-- ================================================
+         🎫 MONTHLY PASSES MANAGEMENT MODAL
+         ================================================ -->
+    <div class="modal-overlay no-print" id="monthly-passes-modal">
+        <div class="modal-box large" style="max-width:900px; max-height:92vh; overflow-y:auto;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px; flex-wrap:wrap; gap:10px;">
+                <h2 style="margin:0; color:#0ea5e9;">🎫 మంత్లీ పాసులు</h2>
+                <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                    <button class="btn btn-blue" style="margin:0; width:auto; padding:8px 14px; font-size:13px;" onclick="refreshMonthlyPasses()">🔄 రిఫ్రెష్</button>
+                    <button class="btn" style="margin:0; width:auto; padding:8px 14px; font-size:13px; background:#0ea5e9;" onclick="openNewPassForm()">➕ కొత్త పాస్</button>
+                </div>
+            </div>
+
+            <!-- Summary bar -->
+            <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:15px;">
+                <div style="flex:1; min-width:120px; background:#f0f9ff; border:1px solid #bae6fd; border-radius:8px; padding:12px; text-align:center;">
+                    <div style="font-size:11px; color:#0369a1; font-weight:bold; text-transform:uppercase;">మొత్తం పాసులు</div>
+                    <div id="mp-total-count" style="font-size:26px; font-weight:bold; color:#0284c7;">0</div>
+                </div>
+                <div style="flex:1; min-width:120px; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:8px; padding:12px; text-align:center;">
+                    <div style="font-size:11px; color:#15803d; font-weight:bold; text-transform:uppercase;">యాక్టివ్</div>
+                    <div id="mp-active-count" style="font-size:26px; font-weight:bold; color:#16a34a;">0</div>
+                </div>
+                <div style="flex:1; min-width:120px; background:#fff7ed; border:1px solid #fed7aa; border-radius:8px; padding:12px; text-align:center;">
+                    <div style="font-size:11px; color:#c2410c; font-weight:bold; text-transform:uppercase;">గడువు దగ్గరలో (&lt;5 రోజులు)</div>
+                    <div id="mp-expiring-count" style="font-size:26px; font-weight:bold; color:#ea580c;">0</div>
+                </div>
+                <div style="flex:1; min-width:120px; background:#fef2f2; border:1px solid #fecaca; border-radius:8px; padding:12px; text-align:center;">
+                    <div style="font-size:11px; color:#dc2626; font-weight:bold; text-transform:uppercase;">గడువు తీరినవి</div>
+                    <div id="mp-expired-count" style="font-size:26px; font-weight:bold; color:#dc2626;">0</div>
+                </div>
+            </div>
+
+            <!-- Search -->
+            <input type="text" id="mp-search" class="customer-search" placeholder="వాహన నంబర్ లేదా ఫోన్ నంబర్ ద్వారా వెతుకు..." oninput="filterMonthlyPasses()">
+
+            <!-- Passes Table -->
+            <div style="overflow-x:auto;">
+                <table class="customer-table" style="width:100%;">
+                    <thead>
+                        <tr>
+                            <th style="min-width:110px;">వాహన నంబర్</th>
+                            <th style="min-width:110px;">ఫోన్ నంబర్</th>
+                            <th style="min-width:110px;">పేరు</th>
+                            <th style="min-width:110px;">జారీ చేసిన తేదీ</th>
+                            <th style="min-width:90px;">రోజులు మిగిలాయి</th>
+                            <th style="min-width:80px;">స్థితి</th>
+                            <th style="min-width:130px;">చర్యలు</th>
+                        </tr>
+                    </thead>
+                    <tbody id="mp-table-body">
+                        <tr><td colspan="7" style="text-align:center; padding:30px; color:#94a3b8;">లోడ్ అవుతోంది...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Renewal notice -->
+            <div style="margin-top:12px; padding:10px 14px; background:#fefce8; border:1px solid #fde68a; border-radius:6px; font-size:12px; color:#92400e;">
+                ℹ️ పాసులు ప్రతి నెల <strong>1వ తేదీన</strong> స్వయంచాలకంగా రిన్యూ అవుతాయి. గడువు తీరిన పాసులను మాన్యువల్‌గా రిన్యూ చేయడానికి "రిన్యూ" బటన్ వాడండి.
+            </div>
+
+            <button class="btn btn-gray" style="margin-top:15px;" onclick="closeModals()">మూసివేయి</button>
+        </div>
+    </div>
+
+    <!-- New / Edit Monthly Pass form modal -->
+    <div class="modal-overlay no-print" id="new-pass-form-modal">
+        <div class="modal-box" style="max-width:460px;">
+            <h2 id="npf-title" style="color:#0ea5e9; margin-bottom:15px;">➕ కొత్త మంత్లీ పాస్</h2>
+
+            <div class="form-group">
+                <label>వాహన నంబర్ *</label>
+                <input type="text" id="npf-vehicle" placeholder="TS09AB1234" oninput="this.value=this.value.toUpperCase()" maxlength="15">
+            </div>
+            <div class="form-group">
+                <label>ఫోన్ నంబర్ *</label>
+                <input type="tel" id="npf-phone" placeholder="10 అంకెల నంబర్" maxlength="15">
+            </div>
+            <div class="form-group">
+                <label>పేరు *</label>
+                <input type="text" id="npf-name" placeholder="కస్టమర్ పేరు">
+            </div>
+            <div class="form-group">
+                <label>జారీ తేదీ</label>
+                <input type="date" id="npf-issue-date">
+            </div>
+
+            <div style="display:flex; gap:10px;">
+                <button class="btn btn-blue" style="flex:1;" onclick="saveMonthlyPass()">✅ సేవ్ చేయి</button>
+                <button class="btn btn-gray" style="flex:1; margin-top:10px;" onclick="document.getElementById('new-pass-form-modal').style.display='none';">రద్దు</button>
+            </div>
         </div>
     </div>
 
@@ -891,7 +986,16 @@
                 // BUG A FIX: Never let the realtime listener overwrite globalStats/passes
                 // while a checkout is mid-flight. _doCheckout fetches its own fresh copy.
                 if(data.globalStats && !checkoutInProgress) globalStats = data.globalStats;
-                if(data.shiftHistory) shiftHistory = data.shiftHistory;
+                // FIX v3.8.3.8.2.3-b: Normalise shiftHistory to a plain array immediately.
+                // Firebase push() stores entries as {"-NxAbc":{...}} objects, not arrays.
+                // Keeping it as an object was fine for Object.values() but any Array.isArray()
+                // guard elsewhere short-circuits incorrectly.  Convert once here so every
+                // consumer (getTodayTotals, calculateReport, updateLiveAdminDashboard) gets
+                // a consistent array with no extra work.
+                if(data.shiftHistory) {
+                    const raw = data.shiftHistory;
+                    shiftHistory = Array.isArray(raw) ? raw : Object.values(raw);
+                }
                 if(data.activeSessions) activeSessions = data.activeSessions; else activeSessions = {};
                 // BUG A FIX: Sync currentShift from server if another tab of same operator
                 // has newer data (more handled count), but never during a checkout.
@@ -904,6 +1008,9 @@
                     }
                 }
                 if(data.passes && !checkoutInProgress) passes = data.passes; else if(!data.passes) passes = {};
+                if(data.monthlyPasses) monthlyPasses = data.monthlyPasses; else monthlyPasses = {};
+                // Auto-renewal: silently renew passes on the 1st of every month
+                checkAutoRenewal();
                 if(data.customerDB) customerDB = data.customerDB; else customerDB = {};
             } else if (!isTester) {
                 // REVENUE SAFETY FIX v3.8.3.8.2:
@@ -2125,6 +2232,30 @@
                 updateShiftUI();
                 renderGrid();
                 showToast(`లాగిన్ విజయవంతమైంది. స్వాగతం ${escapeHTML(currentShift.name)}`);
+
+                // FIX v3.8.3.8.2.3-b: Proactively fetch today's shiftHistory right after login
+                // so the admin dashboard never shows ₹0 during the window between login and
+                // the first on('value') listener firing (which can take 1-3 seconds on reload).
+                if (currentShift.role === 'admin' && !isTester) {
+                    const _ts = new Date().setHours(0, 0, 0, 0);
+                    const _te = new Date().setHours(23, 59, 59, 999);
+                    db.ref('/shiftHistory').orderByChild('logoutTime').startAt(_ts).endAt(_te).once('value').then(snap => {
+                        if (snap.exists()) {
+                            const fetched = snap.val();
+                            const fetchedArr = Array.isArray(fetched) ? fetched : Object.values(fetched);
+                            // Merge with any entries already in shiftHistory (from the root listener)
+                            const existing = Array.isArray(shiftHistory) ? shiftHistory : Object.values(shiftHistory || {});
+                            const map = {};
+                            [...existing, ...fetchedArr].forEach(s => {
+                                if (!s || !s.loginTime) return;
+                                const k = (s.username || s.name || '') + '_' + s.loginTime;
+                                map[k] = s; // fetchedArr wins (same key = last write wins = fetchedArr is last)
+                            });
+                            shiftHistory = Object.values(map);
+                            updateLiveAdminDashboard();
+                        }
+                    }).catch(e => console.warn('Post-login shiftHistory fetch failed:', e));
+                }
             } else { alert("యూజర్ నేమ్ లేదా పాస్‌వర్డ్ తప్పు."); }
         }
 
@@ -2553,6 +2684,253 @@
                 });
             }
             setTimeout(() => { window.print(); }, 500);
+        }
+
+        // ================================================================
+        //  🎫 MONTHLY PASSES MANAGEMENT
+        //  Passes store: /monthlyPasses/<phone> = { name, vehicle, phone, issueDate (ms), renewalDay:1 }
+        //  issueDate is set when pass is created/renewed. Expiry = next 1st of month after issueDate.
+        // ================================================================
+
+        let monthlyPasses = {};  // keyed by phone number
+
+        function getMonthlyPassExpiry(issueDate) {
+            // Expiry = the 1st of the NEXT month after issueDate
+            const d = new Date(issueDate);
+            // Go to the 1st of the month after issue month
+            const expiry = new Date(d.getFullYear(), d.getMonth() + 1, 1, 0, 0, 0, 0);
+            return expiry.getTime();
+        }
+
+        function getDaysLeft(issueDate) {
+            const now = Date.now();
+            const expiry = getMonthlyPassExpiry(issueDate);
+            const diff = expiry - now;
+            if (diff <= 0) return 0;
+            return Math.ceil(diff / (1000 * 60 * 60 * 24));
+        }
+
+        function openMonthlyPasses() {
+            document.getElementById('monthly-passes-modal').style.display = 'flex';
+            refreshMonthlyPasses();
+        }
+
+        function refreshMonthlyPasses() {
+            const tbody = document.getElementById('mp-table-body');
+            tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:20px;color:#94a3b8;">Firebase నుండి లోడ్ అవుతోంది...</td></tr>';
+            db.ref('/monthlyPasses').once('value').then(snap => {
+                monthlyPasses = snap.exists() ? (snap.val() || {}) : {};
+                renderMonthlyPassesTable();
+            }).catch(e => {
+                tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:20px;color:red;">లోడ్ చేయడంలో ఎర్రర్.</td></tr>';
+            });
+        }
+
+        function renderMonthlyPassesTable() {
+            const tbody = document.getElementById('mp-table-body');
+            const search = (document.getElementById('mp-search').value || '').toLowerCase().trim();
+            const now = Date.now();
+            let all = Object.values(monthlyPasses).filter(p => p && p.phone);
+
+            // Filter by search
+            if (search) {
+                all = all.filter(p =>
+                    (p.vehicle || '').toLowerCase().includes(search) ||
+                    (p.phone || '').toLowerCase().includes(search) ||
+                    (p.name || '').toLowerCase().includes(search)
+                );
+            }
+
+            // Sort: expiring soonest first, then expired
+            all.sort((a, b) => {
+                const da = getDaysLeft(a.issueDate || now);
+                const db2 = getDaysLeft(b.issueDate || now);
+                return da - db2;
+            });
+
+            let totalCount = Object.values(monthlyPasses).filter(p => p && p.phone).length;
+            let activeCount = 0, expiringCount = 0, expiredCount = 0;
+            Object.values(monthlyPasses).filter(p => p && p.phone).forEach(p => {
+                const d = getDaysLeft(p.issueDate || now);
+                if (d === 0) expiredCount++;
+                else if (d <= 5) { expiringCount++; activeCount++; }
+                else activeCount++;
+            });
+            document.getElementById('mp-total-count').innerText = totalCount;
+            document.getElementById('mp-active-count').innerText = activeCount;
+            document.getElementById('mp-expiring-count').innerText = expiringCount;
+            document.getElementById('mp-expired-count').innerText = expiredCount;
+
+            if (all.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:30px;color:#94a3b8;">' +
+                    (search ? 'వెతుకు ఫలితాలు లేవు.' : 'ఇంకా మంత్లీ పాసులు లేవు. "కొత్త పాస్" బటన్ నొక్కి కొత్తది క్రియేట్ చేయండి.') +
+                    '</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = '';
+            all.forEach(p => {
+                const daysLeft = getDaysLeft(p.issueDate || now);
+                const expiry = getMonthlyPassExpiry(p.issueDate || now);
+                const expiryStr = new Date(expiry).toLocaleDateString('te-IN', {day:'2-digit', month:'short', year:'numeric'});
+                const issuedStr = p.issueDate ? new Date(p.issueDate).toLocaleDateString('te-IN', {day:'2-digit', month:'short', year:'numeric'}) : '--';
+
+                let statusBadge, rowBg;
+                if (daysLeft === 0) {
+                    statusBadge = '<span style="background:#fee2e2;color:#dc2626;padding:3px 8px;border-radius:10px;font-size:11px;font-weight:bold;">గడువు తీరింది</span>';
+                    rowBg = '#fff5f5';
+                } else if (daysLeft <= 5) {
+                    statusBadge = '<span style="background:#fff7ed;color:#ea580c;padding:3px 8px;border-radius:10px;font-size:11px;font-weight:bold;">⚠️ ' + daysLeft + ' రోజులు</span>';
+                    rowBg = '#fffbeb';
+                } else {
+                    statusBadge = '<span style="background:#dcfce7;color:#16a34a;padding:3px 8px;border-radius:10px;font-size:11px;font-weight:bold;">✅ యాక్టివ్</span>';
+                    rowBg = '#ffffff';
+                }
+
+                const daysCell = daysLeft === 0
+                    ? '<span style="color:#dc2626;font-weight:bold;">గడువు తీరింది</span>'
+                    : '<span style="font-weight:bold;color:' + (daysLeft <= 5 ? '#ea580c' : '#16a34a') + ';">' + daysLeft + ' రోజులు</span><br><span style="font-size:10px;color:#94a3b8;">' + expiryStr + ' వరకు</span>';
+
+                tbody.innerHTML += `<tr style="background:${rowBg}; border-bottom:1px solid #e2e8f0;">
+                    <td style="padding:10px; font-weight:bold;">${escapeHTML(p.vehicle || '--')}</td>
+                    <td style="padding:10px;">${escapeHTML(p.phone)}</td>
+                    <td style="padding:10px;">${escapeHTML(p.name || '--')}</td>
+                    <td style="padding:10px; font-size:13px;">${issuedStr}</td>
+                    <td style="padding:10px;">${daysCell}</td>
+                    <td style="padding:10px;">${statusBadge}</td>
+                    <td style="padding:10px;">
+                        <div style="display:flex; gap:5px; flex-wrap:wrap;">
+                            <button onclick="editMonthlyPass('${escapeHTML(p.phone)}')" style="background:#3b82f6;color:white;border:none;border-radius:4px;padding:4px 8px;cursor:pointer;font-size:12px;">✏️ సవరించు</button>
+                            <button onclick="renewMonthlyPass('${escapeHTML(p.phone)}')" style="background:#10b981;color:white;border:none;border-radius:4px;padding:4px 8px;cursor:pointer;font-size:12px;">🔄 రిన్యూ</button>
+                            <button onclick="deleteMonthlyPass('${escapeHTML(p.phone)}')" style="background:#ef4444;color:white;border:none;border-radius:4px;padding:4px 8px;cursor:pointer;font-size:12px;">🗑️</button>
+                        </div>
+                    </td>
+                </tr>`;
+            });
+        }
+
+        function filterMonthlyPasses() {
+            renderMonthlyPassesTable();
+        }
+
+        function openNewPassForm(phone) {
+            // Reset form
+            document.getElementById('npf-title').innerText = '➕ కొత్త మంత్లీ పాస్';
+            document.getElementById('npf-vehicle').value = '';
+            document.getElementById('npf-phone').value = phone || '';
+            document.getElementById('npf-name').value = '';
+            // Default issue date = today
+            document.getElementById('npf-issue-date').value = getLocalDateString(new Date());
+            document.getElementById('new-pass-form-modal').dataset.editPhone = '';
+            document.getElementById('new-pass-form-modal').style.display = 'flex';
+        }
+
+        function editMonthlyPass(phone) {
+            const p = monthlyPasses[phone];
+            if (!p) return;
+            document.getElementById('npf-title').innerText = '✏️ పాస్ సవరించు';
+            document.getElementById('npf-vehicle').value = p.vehicle || '';
+            document.getElementById('npf-phone').value = p.phone || phone;
+            document.getElementById('npf-name').value = p.name || '';
+            document.getElementById('npf-issue-date').value = p.issueDate ? getLocalDateString(new Date(p.issueDate)) : getLocalDateString(new Date());
+            document.getElementById('new-pass-form-modal').dataset.editPhone = phone;
+            document.getElementById('new-pass-form-modal').style.display = 'flex';
+        }
+
+        function saveMonthlyPass() {
+            const vehicle = document.getElementById('npf-vehicle').value.trim().toUpperCase();
+            const phone   = document.getElementById('npf-phone').value.trim();
+            const name    = document.getElementById('npf-name').value.trim();
+            const issueDateVal = document.getElementById('npf-issue-date').value;
+            const editPhone = document.getElementById('new-pass-form-modal').dataset.editPhone || '';
+
+            if (!vehicle) return alert('దయచేసి వాహన నంబర్ ఎంటర్ చేయండి.');
+            if (!phone || phone.length < 10) return alert('దయచేసి సరైన ఫోన్ నంబర్ ఎంటర్ చేయండి.');
+            if (!name) return alert('దయచేసి పేరు ఎంటర్ చేయండి.');
+
+            let issueParts = issueDateVal ? issueDateVal.split('-') : null;
+            const issueTs = issueParts
+                ? new Date(+issueParts[0], +issueParts[1]-1, +issueParts[2], 0, 0, 0, 0).getTime()
+                : Date.now();
+
+            // If editing and phone changed, delete old key
+            if (editPhone && editPhone !== phone) {
+                monthlyPasses[editPhone] = null; // will be deleted
+                if (!isTester) db.ref('/monthlyPasses/' + editPhone).remove();
+            }
+
+            monthlyPasses[phone] = { name, vehicle, phone, issueDate: issueTs };
+
+            if (!isTester) {
+                db.ref('/monthlyPasses/' + phone).set(monthlyPasses[phone])
+                    .then(() => { showToast('పాస్ సేవ్ అయింది! ✅'); })
+                    .catch(e => showToast('సేవ్ చేయడంలో ఎర్రర్: ' + e.message));
+            } else {
+                showToast('పాస్ సేవ్ అయింది (టెస్ట్ మోడ్)! ✅');
+            }
+
+            document.getElementById('new-pass-form-modal').style.display = 'none';
+            renderMonthlyPassesTable();
+        }
+
+        function renewMonthlyPass(phone) {
+            const p = monthlyPasses[phone];
+            if (!p) return;
+            // Renewal = set issueDate to today (1st of month if already past 1st, else today)
+            // Per requirement: renewal on the 1st of every month.
+            // When admin clicks Renew, set issueDate = today so expiry = 1st of next month.
+            if (!confirm(`${p.name || phone} పాస్‌ను రిన్యూ చేయాలా?
+కొత్త గడువు: నెల 1వ తేదీ వరకు`)) return;
+            monthlyPasses[phone].issueDate = Date.now();
+            if (!isTester) {
+                db.ref('/monthlyPasses/' + phone + '/issueDate').set(Date.now())
+                    .then(() => showToast('పాస్ రిన్యూ అయింది! 🔄'))
+                    .catch(e => showToast('రిన్యూ ఎర్రర్: ' + e.message));
+            } else {
+                showToast('పాస్ రిన్యూ అయింది (టెస్ట్ మోడ్)! 🔄');
+            }
+            renderMonthlyPassesTable();
+        }
+
+        function deleteMonthlyPass(phone) {
+            const p = monthlyPasses[phone];
+            if (!p) return;
+            if (!confirm(`${p.name || phone} పాస్‌ను డిలీట్ చేయాలా? ఈ చర్య తిరగదు.`)) return;
+            delete monthlyPasses[phone];
+            if (!isTester) {
+                db.ref('/monthlyPasses/' + phone).remove()
+                    .then(() => showToast('పాస్ డిలీట్ అయింది.'))
+                    .catch(e => showToast('డిలీట్ ఎర్రర్: ' + e.message));
+            } else {
+                showToast('పాస్ డిలీట్ అయింది (టెస్ట్ మోడ్).');
+            }
+            renderMonthlyPassesTable();
+        }
+
+        // Auto-renewal check: on page load / daily — if today is the 1st of the month,
+        // auto-renew any passes whose issueDate is from last month.
+        function checkAutoRenewal() {
+            const today = new Date();
+            if (today.getDate() !== 1) return; // only on the 1st
+            const monthStart = new Date(today.getFullYear(), today.getMonth(), 1, 0, 0, 0, 0).getTime();
+
+            db.ref('/monthlyPasses').once('value').then(snap => {
+                if (!snap.exists()) return;
+                const all = snap.val() || {};
+                const updates = {};
+                Object.entries(all).forEach(([phone, p]) => {
+                    if (!p || !p.issueDate) return;
+                    // If issueDate is before this month's 1st → it's an old month → auto-renew
+                    if (p.issueDate < monthStart) {
+                        updates[phone + '/issueDate'] = monthStart;
+                    }
+                });
+                if (Object.keys(updates).length > 0 && !isTester) {
+                    db.ref('/monthlyPasses').update(updates).then(() => {
+                        console.log('Auto-renewed ' + Object.keys(updates).length + ' monthly passes on the 1st.');
+                    });
+                }
+            }).catch(e => console.warn('Auto-renewal check failed:', e));
         }
 
         function closeModals() {
