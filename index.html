@@ -614,6 +614,8 @@
                             <th>వాహన రకం</th>
                             <th>చెక్-ఇన్ సమయం</th>
                             <th>చెక్-అవుట్ సమయం</th>
+                            <th>వ్యయం (Duration)</th>
+                            <th>చెల్లించిన మొత్తం (Fee)</th>
                         </tr>
                     </thead>
                     <tbody id="customer-db-body">
@@ -1190,6 +1192,17 @@
                     let checkOutStr = cust.checkOut ? new Date(cust.checkOut).toLocaleString('te-IN') : '--';
                     let typeStr = cust.vehicleType ? (typeLabels[cust.vehicleType] || cust.vehicleType) : '--';
                     let slotStr = cust.slotNo ? `#${cust.slotNo}` : '--';
+
+                    let durationStr = '--';
+                    if(cust.checkIn && cust.checkOut) {
+                        const diff = Math.max(0, cust.checkOut - cust.checkIn);
+                        const h = Math.floor(diff / 3600000);
+                        const m = Math.floor((diff % 3600000) / 60000);
+                        const s = Math.floor((diff % 60000) / 1000);
+                        durationStr = `${h}h ${m}m ${s}s`;
+                    }
+                    const feeStr = cust.fee ? `₹${parseFloat(cust.fee).toFixed(2)}` : '--';
+
                     tbody.innerHTML += `
                         <tr>
                             <td>${slotStr}</td>
@@ -1197,6 +1210,8 @@
                             <td>${typeStr}</td>
                             <td>${checkInStr}</td>
                             <td>${checkOutStr}</td>
+                            <td>${durationStr}</td>
+                            <td><strong>${feeStr}</strong></td>
                         </tr>
                     `;
                 }
@@ -1239,11 +1254,10 @@
             historyArray.forEach(shift => {
                 if (!shift) return;
                 const lt = shift.loginTime;
-                const lo = shift.logoutTime;
-                // Count shift if it logged out today (captures overnight vehicles checked out this morning)
-                // OR if it logged in today (same-day shifts). Use logoutTime as primary signal for revenue.
-                const refTime = (lo && lo >= todayStart && lo <= todayEnd) ? lo : lt;
-                if (!refTime || refTime < todayStart || refTime > todayEnd) return;
+                // Gate strictly by loginTime: a shift belongs to the day the operator clocked IN.
+                // An overnight shift (login yesterday, logout today) is yesterday's revenue — it must
+                // not inflate today's dashboard total.
+                if (!lt || lt < todayStart || lt > todayEnd) return;
                 if (seenLoginTimes.has(String(lt))) return;
                 seenLoginTimes.add(String(lt));
                 tHandled += (shift.handled || 0);
@@ -1271,7 +1285,7 @@
             if (histArr.length === 0 && !isTester) {
                 const todayStart = new Date().setHours(0, 0, 0, 0);
                 const todayEnd   = new Date().setHours(23, 59, 59, 999);
-                db.ref('/shiftHistory').orderByChild('logoutTime').startAt(todayStart).endAt(todayEnd).once('value').then(snap => {
+                db.ref('/shiftHistory').orderByChild('loginTime').startAt(todayStart).endAt(todayEnd).once('value').then(snap => {
                     if (snap.exists()) {
                         const fetched = snap.val();
                         const fetchedArr = Array.isArray(fetched) ? fetched : Object.values(fetched);
@@ -1340,9 +1354,8 @@
                 const todayEnd   = new Date().setHours(23, 59, 59, 999);
 
                 const [histSnap, sessSnap] = await Promise.all([
-                    // FIX v3.8.3.8.2.2: Query by logoutTime (revenue day) so shifts that logged in
-                    // yesterday but were checked out today are included in today's dashboard totals.
-                    db.ref('/shiftHistory').orderByChild('logoutTime').startAt(todayStart).endAt(todayEnd).once('value'),
+                    // Query by loginTime: a shift belongs to the day the operator clocked IN.
+                    db.ref('/shiftHistory').orderByChild('loginTime').startAt(todayStart).endAt(todayEnd).once('value'),
                     db.ref('/activeSessions').once('value')
                 ]);
 
@@ -1918,16 +1931,18 @@
                             vehicleType: currentActiveSpot.type || null,
                             slotNo: currentActiveSpot.id || null,
                             checkIn: currentActiveSpot.entryTime || checkOutTime,
-                            checkOut: checkOutTime
+                            checkOut: checkOutTime,
+                            fee: currentFeeCalculation
                         };
                     } else {
                         customerDB[coKey].checkOut = checkOutTime;
+                        customerDB[coKey].fee = currentFeeCalculation;
                         if (currentActiveSpot.id) customerDB[coKey].slotNo = currentActiveSpot.id;
                     }
                     // Always write to Firebase directly — don't rely on local cache lookup
                     if (!isTester) {
                         firebase.database().ref('/customerDB/' + coKey)
-                            .update({ checkOut: checkOutTime, slotNo: currentActiveSpot.id || null })
+                            .update({ checkOut: checkOutTime, slotNo: currentActiveSpot.id || null, fee: currentFeeCalculation })
                             .catch(e => console.error('customerDB checkOut write failed:', e));
                     }
                 }
