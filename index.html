@@ -529,7 +529,12 @@
                 <span id="info-discount-msg" style="display:none; color: var(--shift-color); font-size: 12px; font-weight: bold; margin-top: 5px;"></span>
             </div>
             <div class="form-group">
+                <label>డిస్కౌంట్ అమౌంట్ (₹)</label>
+                <input type="number" id="input-checkout-discount" placeholder="0" min="0" oninput="updateLiveCheckoutStats()">
+            </div>
+            <div class="form-group">
                 <label>చెల్లింపు విధానం</label>
+
                 <select id="input-payment-method" onchange="togglePaymentMethod()">
                     <option value="CASH">నగదు (Cash)</option>
                     <option value="ONLINE">ఆన్‌లైన్ (UPI)</option>
@@ -1462,8 +1467,9 @@
                 }
                 togglePaymentMethod();
                 
-                document.getElementById('input-cash-received').value = ''; 
-                
+                document.getElementById('input-cash-received').value = '';
+                document.getElementById('input-checkout-discount').value = '';
+
                 updateLiveCheckoutStats();
                 document.getElementById('checkout-modal').style.display = 'flex';
                 
@@ -1891,8 +1897,10 @@
                 <div class="receipt-row"><span>రుసుము:</span> <strong>₹${currentFeeCalculation.toFixed(2)}</strong></div>
             `;
             
+            const manualDiscount = parseFloat(document.getElementById('input-checkout-discount').value) || 0;
             if (appliedDiscountAmount > 0) {
-                printHTML += `<div class="receipt-row" style="font-size:10px; color:#555;"><span>పాస్ డిస్కౌంట్:</span> <span>- ₹${appliedDiscountAmount.toFixed(2)}</span></div>`;
+                const discountLabel = manualDiscount > 0 ? 'డిస్కౌంట్' : 'పాస్ డిస్కౌంట్';
+                printHTML += `<div class="receipt-row" style="font-size:10px; color:#555;"><span>${discountLabel}:</span> <span>- ₹${appliedDiscountAmount.toFixed(2)}</span></div>`;
             }
 
             printHTML += `
@@ -2002,13 +2010,17 @@
                 rawFee = segmentRate * blocks;
             }
 
-            appliedDiscountAmount = 0;
-            if (currentActiveSpot.hasPass) {
+            const manualDiscount = parseFloat(document.getElementById('input-checkout-discount').value) || 0;
+            if (manualDiscount > 0) {
+                appliedDiscountAmount = manualDiscount;
+            } else if (currentActiveSpot.hasPass) {
                 const discountPct = parseFloat(systemSettings.passDiscount) || 0;
                 appliedDiscountAmount = rawFee * (discountPct / 100);
-                rawFee = rawFee - appliedDiscountAmount;
+            } else {
+                appliedDiscountAmount = 0;
             }
-            
+            rawFee = rawFee - appliedDiscountAmount;
+
             currentFeeCalculation = parseFloat(rawFee.toFixed(2));
 
             document.getElementById('info-fee').style.display = 'block';
