@@ -164,6 +164,13 @@
 </head>
 <body>
 
+    <!--
+    ╔══════════════════════════════════════════════════════════════════════════════╗
+    ║  🔒  DO NOT MODIFY: 300-slot grid, checkin/checkout modals, shift system   ║
+    ║  Key: spots[i].id===i+1 | renderGrid() read-only | /spots/<id-1> writes   ║
+    ╚══════════════════════════════════════════════════════════════════════════════╝
+    -->
+
     <div id="cloud-loader">
         <div style="font-size: 40px; margin-bottom: 10px;">☁️</div>
         డేటాబేస్‌కు కనెక్ట్ అవుతోంది...
@@ -231,12 +238,13 @@
             </div>
             <div class="control-btns">
                 <button class="btn-top btn-shift" id="btn-shift-action" onclick="handleShiftClick()">▶ సెక్యూర్ లాగిన్</button>
+                <button class="btn-top" id="btn-pass-manage" onclick="openPassModal()" style="display:none; background-color:#8b5cf6; color:white; border:none;">💳 పాస్ / కార్డ్</button>
                 <button class="btn-top" id="btn-worker-stats" onclick="showWorkerStats()" style="display:none; background-color:#3b82f6; color:white; border:none;">📊 నా షిఫ్ట్</button>
-
+                
                 <button class="btn-top btn-admin admin-only" onclick="openAdminSettings()">⚙️ సెట్టింగ్స్</button>
                 <button class="btn-top admin-only" style="background-color: var(--admin-color); color: white; border: none;" onclick="openCustomerDB()">👥 కస్టమర్ డేటాబేస్</button>
                 <button class="btn-top admin-only" onclick="openReport()">📊 రిపోర్ట్స్</button>
-                <button class="btn-top" style="background-color:#0ea5e9; color:white; border:none;" onclick="openMonthlyPasses()">🎫 మంత్లీ పాసులు</button>
+                <button class="btn-top admin-only" style="background-color:#0ea5e9; color:white; border:none;" onclick="openMonthlyPasses()">🎫 మంత్లీ పాసులు</button>
             </div>
         </div>
 
@@ -371,7 +379,6 @@
                             <th style="min-width:110px;">జారీ చేసిన తేదీ</th>
                             <th style="min-width:90px;">రోజులు మిగిలాయి</th>
                             <th style="min-width:80px;">స్థితి</th>
-                            <th style="min-width:80px;">చెల్లింపు (Paid)</th>
                             <th style="min-width:130px;">చర్యలు</th>
                         </tr>
                     </thead>
@@ -529,12 +536,7 @@
                 <span id="info-discount-msg" style="display:none; color: var(--shift-color); font-size: 12px; font-weight: bold; margin-top: 5px;"></span>
             </div>
             <div class="form-group">
-                <label>డిస్కౌంట్ అమౌంట్ (₹)</label>
-                <input type="number" id="input-checkout-discount" placeholder="0" min="0" oninput="updateLiveCheckoutStats()">
-            </div>
-            <div class="form-group">
                 <label>చెల్లింపు విధానం</label>
-
                 <select id="input-payment-method" onchange="togglePaymentMethod()">
                     <option value="CASH">నగదు (Cash)</option>
                     <option value="ONLINE">ఆన్‌లైన్ (UPI)</option>
@@ -616,12 +618,9 @@
                         <tr>
                             <th>స్లాట్</th>
                             <th>బండి నంబర్</th>
-                            <th>ఫోన్ నంబర్</th>
                             <th>వాహన రకం</th>
                             <th>చెక్-ఇన్ సమయం</th>
                             <th>చెక్-అవుట్ సమయం</th>
-                            <th>వ్యయం (Duration)</th>
-                            <th>చెల్లించిన మొత్తం (Fee)</th>
                         </tr>
                     </thead>
                     <tbody id="customer-db-body">
@@ -629,7 +628,6 @@
                 </table>
             </div>
             <div style="display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap;">
-                <button class="btn btn-blue" style="flex:1; margin-top:0;" onclick="exportCustomerDBToCSV()">📥 ఎక్సెల్ కు ఎగుమతి చేయి</button>
                 <button class="btn btn-danger" style="flex:1; margin-top:0;" onclick="clearCustomerDB()">🗑️ కస్టమర్ డేటా మొత్తం డిలీట్ చేయి</button>
                 <button class="btn btn-gray" style="flex:1; margin-top:0;" onclick="closeModals()">మూసివేయి</button>
             </div>
@@ -987,20 +985,22 @@
             if (data) {
                 if(data.settings) systemSettings = data.settings;
                 if(!isTester && data.spots) {
-                    spots = Array.isArray(data.spots) ? data.spots : Object.values(data.spots);
-                    for(let i=0; i<TOTAL_SPOTS; i++) {
-                        if(!spots[i]) spots[i] = { id: i + 1, isOccupied: false, plate: '', personName: '', phone: '', type: null, entryTime: null, hasPass: false };
-                    }
+                    // FIX: Firebase sparse object → rebuild full 300-slot array by spot.id
+                    const _raw = data.spots;
+                    const _rebuilt = Array.from({length: TOTAL_SPOTS}, (_, i) => ({
+                        id: i+1, isOccupied: false, plate: '', personName: '',
+                        phone: '', type: null, entryTime: null, hasPass: false
+                    }));
+                    (Array.isArray(_raw) ? _raw : Object.values(_raw)).forEach(s => {
+                        if (!s) return;
+                        const idx = (s.id != null) ? (s.id - 1) : null;
+                        if (idx !== null && idx >= 0 && idx < TOTAL_SPOTS) _rebuilt[idx] = s;
+                    });
+                    spots = _rebuilt;
                 } 
                 // BUG A FIX: Never let the realtime listener overwrite globalStats/passes
                 // while a checkout is mid-flight. _doCheckout fetches its own fresh copy.
                 if(data.globalStats && !checkoutInProgress) globalStats = data.globalStats;
-                // FIX v3.8.3.8.2.3-b: Normalise shiftHistory to a plain array immediately.
-                // Firebase push() stores entries as {"-NxAbc":{...}} objects, not arrays.
-                // Keeping it as an object was fine for Object.values() but any Array.isArray()
-                // guard elsewhere short-circuits incorrectly.  Convert once here so every
-                // consumer (getTodayTotals, calculateReport, updateLiveAdminDashboard) gets
-                // a consistent array with no extra work.
                 if(data.shiftHistory) {
                     const raw = data.shiftHistory;
                     shiftHistory = Array.isArray(raw) ? raw : Object.values(raw);
@@ -1180,22 +1180,18 @@
         function filterCustomerDB() {
             const query = document.getElementById('customer-search-input').value.toLowerCase();
             const tbody = document.getElementById('customer-db-body');
-
+            tbody.innerHTML = '';
+            
             if(!customerDB || Object.keys(customerDB).length === 0) {
-                tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;">డేటాబేస్‌లో కస్టమర్లు ఎవరూ లేరు.</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;">డేటాబేస్‌లో కస్టమర్లు ఎవరూ లేరు.</td></tr>';
                 return;
             }
 
             const typeLabels = { "2": "🚲 సైకిల్", "3": "🏍️ బైక్", "4": "🛺 ఆటో", "5": "🚗 కారు" };
 
-            let sortedEntries = Object.entries(customerDB).sort((a, b) => {
-                const custA = a[1];
-                const custB = b[1];
-                return (custB.checkIn || custB.lastSeen || 0) - (custA.checkIn || custA.lastSeen || 0);
-            });
+            let sortedCustomers = Object.values(customerDB).sort((a,b) => (b.checkIn || b.lastSeen || 0) - (a.checkIn || a.lastSeen || 0));
 
-            let htmlBuffer = [];
-            sortedEntries.forEach(([id, cust]) => {
+            sortedCustomers.forEach(cust => {
                 if (!cust) return;
                 const custPlate = (cust.plate || '').toLowerCase();
                 if (custPlate.includes(query) || !query) {
@@ -1203,82 +1199,17 @@
                     let checkOutStr = cust.checkOut ? new Date(cust.checkOut).toLocaleString('te-IN') : '--';
                     let typeStr = cust.vehicleType ? (typeLabels[cust.vehicleType] || cust.vehicleType) : '--';
                     let slotStr = cust.slotNo ? `#${cust.slotNo}` : '--';
-
-                    // The key 'id' is either the phone number (10 digits) or the plate.
-                    let phoneStr = (id.length === 10 && /^\d+$/.test(id)) ? id : '--';
-
-                    let durationStr = '--';
-                    if(cust.checkIn && cust.checkOut) {
-                        const diff = Math.max(0, cust.checkOut - cust.checkIn);
-                        const h = Math.floor(diff / 3600000);
-                        const m = Math.floor((diff % 3600000) / 60000);
-                        const s = Math.floor((diff % 60000) / 1000);
-                        durationStr = `${h}h ${m}m ${s}s`;
-                    }
-                    const feeStr = cust.fee ? `₹${parseFloat(cust.fee).toFixed(2)}` : '--';
-
-                    htmlBuffer.push(`
+                    tbody.innerHTML += `
                         <tr>
                             <td>${slotStr}</td>
                             <td><strong>${escapeHTML(cust.plate || '--')}</strong></td>
-                            <td>${escapeHTML(phoneStr)}</td>
                             <td>${typeStr}</td>
                             <td>${checkInStr}</td>
                             <td>${checkOutStr}</td>
-                            <td>${durationStr}</td>
-                            <td><strong>${feeStr}</strong></td>
                         </tr>
-                    `);
+                    `;
                 }
             });
-
-            if (htmlBuffer.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;">వెతుకు ఫలితాలు లేవు.</td></tr>';
-            } else {
-                tbody.innerHTML = htmlBuffer.join('');
-            }
-        }
-
-        function exportCustomerDBToCSV() {
-            if(!customerDB || Object.keys(customerDB).length === 0) {
-                alert("ఎగుమతి చేయడానికి డేటా లేదు.");
-                return;
-            }
-
-            let csvContent = "data:text/csv;charset=utf-8,﻿";
-            csvContent += "Slot,Plate,Phone,Vehicle Type,Check-In,Check-Out,Duration,Fee\n";
-
-            const typeLabels = { "2": "Cycle", "3": "Bike", "4": "Auto", "5": "Car" };
-
-            Object.entries(customerDB).forEach(([id, cust]) => {
-                if (!cust) return;
-                const checkInStr = (cust.checkIn || cust.lastSeen) ? new Date(cust.checkIn || cust.lastSeen).toLocaleString('en-IN') : '--';
-                const checkOutStr = cust.checkOut ? new Date(cust.checkOut).toLocaleString('en-IN') : '--';
-                const typeStr = cust.vehicleType ? (typeLabels[cust.vehicleType] || cust.vehicleType) : '--';
-                const slotStr = cust.slotNo ? `#${cust.slotNo}` : '--';
-                const phoneStr = (id.length === 10 && /^\d+$/.test(id)) ? id : '--';
-
-                let durationStr = '--';
-                if(cust.checkIn && cust.checkOut) {
-                    const diff = Math.max(0, cust.checkOut - cust.checkIn);
-                    const h = Math.floor(diff / 3600000);
-                    const m = Math.floor((diff % 3600000) / 60000);
-                    const s = Math.floor((diff % 60000) / 1000);
-                    durationStr = `${h}h ${m}m ${s}s`;
-                }
-                const feeStr = cust.fee ? parseFloat(cust.fee).toFixed(2) : '0.00';
-
-                csvContent += `"${slotStr}","${cust.plate || '--'}","${phoneStr}","${typeStr}","${checkInStr}","${checkOutStr}","${durationStr}","${feeStr}"\n`;
-            });
-
-            const encodedUri = encodeURI(csvContent);
-            const link = document.createElement("a");
-            link.setAttribute("href", encodedUri);
-            link.setAttribute("download", `Customer_Database_${new Date().toISOString().split('T')[0]}.csv`);
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            showToast("డేటాబేస్ ఎగుమతి చేయబడింది!");
         }
 
         function getTodayTotals() {
@@ -1317,10 +1248,11 @@
             historyArray.forEach(shift => {
                 if (!shift) return;
                 const lt = shift.loginTime;
-                // Gate strictly by loginTime: a shift belongs to the day the operator clocked IN.
-                // An overnight shift (login yesterday, logout today) is yesterday's revenue — it must
-                // not inflate today's dashboard total.
-                if (!lt || lt < todayStart || lt > todayEnd) return;
+                const lo = shift.logoutTime;
+                // Count shift if it logged out today (captures overnight vehicles checked out this morning)
+                // OR if it logged in today (same-day shifts). Use logoutTime as primary signal for revenue.
+                const refTime = (lo && lo >= todayStart && lo <= todayEnd) ? lo : lt;
+                if (!refTime || refTime < todayStart || refTime > todayEnd) return;
                 if (seenLoginTimes.has(String(lt))) return;
                 seenLoginTimes.add(String(lt));
                 tHandled += (shift.handled || 0);
@@ -1348,7 +1280,7 @@
             if (histArr.length === 0 && !isTester) {
                 const todayStart = new Date().setHours(0, 0, 0, 0);
                 const todayEnd   = new Date().setHours(23, 59, 59, 999);
-                db.ref('/shiftHistory').orderByChild('loginTime').startAt(todayStart).endAt(todayEnd).once('value').then(snap => {
+                db.ref('/shiftHistory').orderByChild('logoutTime').startAt(todayStart).endAt(todayEnd).once('value').then(snap => {
                     if (snap.exists()) {
                         const fetched = snap.val();
                         const fetchedArr = Array.isArray(fetched) ? fetched : Object.values(fetched);
@@ -1417,8 +1349,9 @@
                 const todayEnd   = new Date().setHours(23, 59, 59, 999);
 
                 const [histSnap, sessSnap] = await Promise.all([
-                    // Query by loginTime: a shift belongs to the day the operator clocked IN.
-                    db.ref('/shiftHistory').orderByChild('loginTime').startAt(todayStart).endAt(todayEnd).once('value'),
+                    // FIX v3.8.3.8.2.2: Query by logoutTime (revenue day) so shifts that logged in
+                    // yesterday but were checked out today are included in today's dashboard totals.
+                    db.ref('/shiftHistory').orderByChild('logoutTime').startAt(todayStart).endAt(todayEnd).once('value'),
                     db.ref('/activeSessions').once('value')
                 ]);
 
@@ -1525,9 +1458,8 @@
                 }
                 togglePaymentMethod();
                 
-                document.getElementById('input-cash-received').value = '';
-                document.getElementById('input-checkout-discount').value = '';
-
+                document.getElementById('input-cash-received').value = ''; 
+                
                 updateLiveCheckoutStats();
                 document.getElementById('checkout-modal').style.display = 'flex';
                 
@@ -1955,10 +1887,8 @@
                 <div class="receipt-row"><span>రుసుము:</span> <strong>₹${currentFeeCalculation.toFixed(2)}</strong></div>
             `;
             
-            const manualDiscount = parseFloat(document.getElementById('input-checkout-discount').value) || 0;
             if (appliedDiscountAmount > 0) {
-                const discountLabel = manualDiscount > 0 ? 'డిస్కౌంట్' : 'పాస్ డిస్కౌంట్';
-                printHTML += `<div class="receipt-row" style="font-size:10px; color:#555;"><span>${discountLabel}:</span> <span>- ₹${appliedDiscountAmount.toFixed(2)}</span></div>`;
+                printHTML += `<div class="receipt-row" style="font-size:10px; color:#555;"><span>పాస్ డిస్కౌంట్:</span> <span>- ₹${appliedDiscountAmount.toFixed(2)}</span></div>`;
             }
 
             printHTML += `
@@ -1997,18 +1927,16 @@
                             vehicleType: currentActiveSpot.type || null,
                             slotNo: currentActiveSpot.id || null,
                             checkIn: currentActiveSpot.entryTime || checkOutTime,
-                            checkOut: checkOutTime,
-                            fee: currentFeeCalculation
+                            checkOut: checkOutTime
                         };
                     } else {
                         customerDB[coKey].checkOut = checkOutTime;
-                        customerDB[coKey].fee = currentFeeCalculation;
                         if (currentActiveSpot.id) customerDB[coKey].slotNo = currentActiveSpot.id;
                     }
                     // Always write to Firebase directly — don't rely on local cache lookup
                     if (!isTester) {
                         firebase.database().ref('/customerDB/' + coKey)
-                            .update({ checkOut: checkOutTime, slotNo: currentActiveSpot.id || null, fee: currentFeeCalculation })
+                            .update({ checkOut: checkOutTime, slotNo: currentActiveSpot.id || null })
                             .catch(e => console.error('customerDB checkOut write failed:', e));
                     }
                 }
@@ -2068,17 +1996,13 @@
                 rawFee = segmentRate * blocks;
             }
 
-            const manualDiscount = parseFloat(document.getElementById('input-checkout-discount').value) || 0;
-            if (manualDiscount > 0) {
-                appliedDiscountAmount = manualDiscount;
-            } else if (currentActiveSpot.hasPass) {
+            appliedDiscountAmount = 0;
+            if (currentActiveSpot.hasPass) {
                 const discountPct = parseFloat(systemSettings.passDiscount) || 0;
                 appliedDiscountAmount = rawFee * (discountPct / 100);
-            } else {
-                appliedDiscountAmount = 0;
+                rawFee = rawFee - appliedDiscountAmount;
             }
-            rawFee = rawFee - appliedDiscountAmount;
-
+            
             currentFeeCalculation = parseFloat(rawFee.toFixed(2));
 
             document.getElementById('info-fee').style.display = 'block';
@@ -2317,30 +2241,6 @@
                 updateShiftUI();
                 renderGrid();
                 showToast(`లాగిన్ విజయవంతమైంది. స్వాగతం ${escapeHTML(currentShift.name)}`);
-
-                // FIX v3.8.3.8.2.3-b: Proactively fetch today's shiftHistory right after login
-                // so the admin dashboard never shows ₹0 during the window between login and
-                // the first on('value') listener firing (which can take 1-3 seconds on reload).
-                if (currentShift.role === 'admin' && !isTester) {
-                    const _ts = new Date().setHours(0, 0, 0, 0);
-                    const _te = new Date().setHours(23, 59, 59, 999);
-                    db.ref('/shiftHistory').orderByChild('logoutTime').startAt(_ts).endAt(_te).once('value').then(snap => {
-                        if (snap.exists()) {
-                            const fetched = snap.val();
-                            const fetchedArr = Array.isArray(fetched) ? fetched : Object.values(fetched);
-                            // Merge with any entries already in shiftHistory (from the root listener)
-                            const existing = Array.isArray(shiftHistory) ? shiftHistory : Object.values(shiftHistory || {});
-                            const map = {};
-                            [...existing, ...fetchedArr].forEach(s => {
-                                if (!s || !s.loginTime) return;
-                                const k = (s.username || s.name || '') + '_' + s.loginTime;
-                                map[k] = s; // fetchedArr wins (same key = last write wins = fetchedArr is last)
-                            });
-                            shiftHistory = Object.values(map);
-                            updateLiveAdminDashboard();
-                        }
-                    }).catch(e => console.warn('Post-login shiftHistory fetch failed:', e));
-                }
             } else { alert("యూజర్ నేమ్ లేదా పాస్‌వర్డ్ తప్పు."); }
         }
 
@@ -2847,15 +2747,13 @@
             document.getElementById('mp-expired-count').innerText = expiredCount;
 
             if (all.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:30px;color:#94a3b8;">' +
+                tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:30px;color:#94a3b8;">' +
                     (search ? 'వెతుకు ఫలితాలు లేవు.' : 'ఇంకా మంత్లీ పాసులు లేవు. "కొత్త పాస్" బటన్ నొక్కి కొత్తది క్రియేట్ చేయండి.') +
                     '</td></tr>';
                 return;
             }
 
             tbody.innerHTML = '';
-            const isAdmin = (currentShift.role === 'admin' || currentShift.role === 'tester');
-
             all.forEach(p => {
                 const daysLeft = getDaysLeft(p.issueDate || now);
                 const expiry = getMonthlyPassExpiry(p.issueDate || now);
@@ -2878,22 +2776,6 @@
                     ? '<span style="color:#dc2626;font-weight:bold;">గడువు తీరింది</span>'
                     : '<span style="font-weight:bold;color:' + (daysLeft <= 5 ? '#ea580c' : '#16a34a') + ';">' + daysLeft + ' రోజులు</span><br><span style="font-size:10px;color:#94a3b8;">' + expiryStr + ' వరకు</span>';
 
-                const paidCell = isAdmin
-                    ? `<input type="checkbox" ${p.paid ? 'checked' : ''} onchange="togglePassPayment('${escapeHTML(p.phone)}')" style="transform: scale(1.2); cursor:pointer;">`
-                    : (p.paid ? '✅' : '❌');
-
-                let actionsCell = '';
-                if (isAdmin) {
-                    actionsCell = `
-                        <div style="display:flex; gap:5px; flex-wrap:wrap;">
-                            <button onclick="editMonthlyPass('${escapeHTML(p.phone)}')" style="background:#3b82f6;color:white;border:none;border-radius:4px;padding:4px 8px;cursor:pointer;font-size:12px;">✏️ సవరించు</button>
-                            <button onclick="renewMonthlyPass('${escapeHTML(p.phone)}')" style="background:#10b981;color:white;border:none;border-radius:4px;padding:4px 8px;cursor:pointer;font-size:12px;">🔄 రిన్యూ</button>
-                            <button onclick="deleteMonthlyPass('${escapeHTML(p.phone)}')" style="background:#ef4444;color:white;border:none;border-radius:4px;padding:4px 8px;cursor:pointer;font-size:12px;">🗑️</button>
-                        </div>`;
-                } else {
-                    actionsCell = '<span style="font-size:11px; color:#94a3b8;">చూడవచ్చు మాత్రమే</span>';
-                }
-
                 tbody.innerHTML += `<tr style="background:${rowBg}; border-bottom:1px solid #e2e8f0;">
                     <td style="padding:10px; font-weight:bold;">${escapeHTML(p.vehicle || '--')}</td>
                     <td style="padding:10px;">${escapeHTML(p.phone)}</td>
@@ -2901,8 +2783,13 @@
                     <td style="padding:10px; font-size:13px;">${issuedStr}</td>
                     <td style="padding:10px;">${daysCell}</td>
                     <td style="padding:10px;">${statusBadge}</td>
-                    <td style="padding:10px; text-align:center;">${paidCell}</td>
-                    <td style="padding:10px;">${actionsCell}</td>
+                    <td style="padding:10px;">
+                        <div style="display:flex; gap:5px; flex-wrap:wrap;">
+                            <button onclick="editMonthlyPass('${escapeHTML(p.phone)}')" style="background:#3b82f6;color:white;border:none;border-radius:4px;padding:4px 8px;cursor:pointer;font-size:12px;">✏️ సవరించు</button>
+                            <button onclick="renewMonthlyPass('${escapeHTML(p.phone)}')" style="background:#10b981;color:white;border:none;border-radius:4px;padding:4px 8px;cursor:pointer;font-size:12px;">🔄 రిన్యూ</button>
+                            <button onclick="deleteMonthlyPass('${escapeHTML(p.phone)}')" style="background:#ef4444;color:white;border:none;border-radius:4px;padding:4px 8px;cursor:pointer;font-size:12px;">🗑️</button>
+                        </div>
+                    </td>
                 </tr>`;
             });
         }
@@ -2923,13 +2810,7 @@
             document.getElementById('new-pass-form-modal').style.display = 'flex';
         }
 
-
-
         function editMonthlyPass(phone) {
-            if (currentShift.role !== 'admin' && currentShift.role !== 'tester') {
-                alert("ఈ ఫీచర్ అడ్మిన్లకు మాత్రమే అందుబాటులో ఉంటుంది.");
-                return;
-            }
             const p = monthlyPasses[phone];
             if (!p) return;
             document.getElementById('npf-title').innerText = '✏️ పాస్ సవరించు';
@@ -2940,7 +2821,6 @@
             document.getElementById('new-pass-form-modal').dataset.editPhone = phone;
             document.getElementById('new-pass-form-modal').style.display = 'flex';
         }
-
 
         function saveMonthlyPass() {
             const vehicle = document.getElementById('npf-vehicle').value.trim().toUpperCase();
@@ -2960,18 +2840,11 @@
 
             // If editing and phone changed, delete old key
             if (editPhone && editPhone !== phone) {
-                if (currentShift.role !== 'admin' && currentShift.role !== 'tester') {
-                    alert("పాస్ ఫోన్ నంబర్‌ను మార్చడం అడ్మిన్లకు మాత్రమే అనుమతించబడింది.");
-                    return;
-                }
                 monthlyPasses[editPhone] = null; // will be deleted
                 if (!isTester) db.ref('/monthlyPasses/' + editPhone).remove();
             }
 
-            // Keep existing 'paid' status if editing, otherwise default to false
-            const existingPaid = (editPhone && monthlyPasses[editPhone]) ? monthlyPasses[editPhone].paid : false;
-
-            monthlyPasses[phone] = { name, vehicle, phone, issueDate: issueTs, paid: existingPaid };
+            monthlyPasses[phone] = { name, vehicle, phone, issueDate: issueTs };
 
             if (!isTester) {
                 db.ref('/monthlyPasses/' + phone).set(monthlyPasses[phone])
@@ -2985,13 +2858,7 @@
             renderMonthlyPassesTable();
         }
 
-
-
         function renewMonthlyPass(phone) {
-            if (currentShift.role !== 'admin' && currentShift.role !== 'tester') {
-                alert("ఈ ఫీచర్ అడ్మిన్లకు మాత్రమే అందుబాటులో ఉంటుంది.");
-                return;
-            }
             const p = monthlyPasses[phone];
             if (!p) return;
             // Renewal = set issueDate to today (1st of month if already past 1st, else today)
@@ -3010,13 +2877,7 @@
             renderMonthlyPassesTable();
         }
 
-
-
         function deleteMonthlyPass(phone) {
-            if (currentShift.role !== 'admin' && currentShift.role !== 'tester') {
-                alert("ఈ ఫీచర్ అడ్మిన్లకు మాత్రమే అందుబాటులో ఉంటుంది.");
-                return;
-            }
             const p = monthlyPasses[phone];
             if (!p) return;
             if (!confirm(`${p.name || phone} పాస్‌ను డిలీట్ చేయాలా? ఈ చర్య తిరగదు.`)) return;
@@ -3030,23 +2891,6 @@
             }
             renderMonthlyPassesTable();
         }
-
-        function togglePassPayment(phone) {
-            if (currentShift.role !== 'admin' && currentShift.role !== 'tester') return;
-            if (!monthlyPasses[phone]) return;
-
-            monthlyPasses[phone].paid = !monthlyPasses[phone].paid;
-
-            if (!isTester) {
-                db.ref('/monthlyPasses/' + phone + '/paid').set(monthlyPasses[phone].paid)
-                    .then(() => showToast(`పేమెంట్ స్థితి ${monthlyPasses[phone].paid ? 'Paid' : 'Not Paid'} గా మార్చబడింది.`))
-                    .catch(e => showToast('అప్‌డేట్ ఎర్రర్: ' + e.message));
-            } else {
-                showToast('పేమెంట్ స్థితి మార్చబడింది (టెస్ట్ మోడ్)!');
-            }
-            renderMonthlyPassesTable();
-        }
-
 
         // Auto-renewal check: on page load / daily — if today is the 1st of the month,
         // auto-renew any passes whose issueDate is from last month.
