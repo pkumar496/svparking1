@@ -238,13 +238,12 @@
             </div>
             <div class="control-btns">
                 <button class="btn-top btn-shift" id="btn-shift-action" onclick="handleShiftClick()">▶ సెక్యూర్ లాగిన్</button>
-                <button class="btn-top" id="btn-pass-manage" onclick="openPassModal()" style="display:none; background-color:#8b5cf6; color:white; border:none;">💳 పాస్ / కార్డ్</button>
                 <button class="btn-top" id="btn-worker-stats" onclick="showWorkerStats()" style="display:none; background-color:#3b82f6; color:white; border:none;">📊 నా షిఫ్ట్</button>
                 
                 <button class="btn-top btn-admin admin-only" onclick="openAdminSettings()">⚙️ సెట్టింగ్స్</button>
                 <button class="btn-top admin-only" style="background-color: var(--admin-color); color: white; border: none;" onclick="openCustomerDB()">👥 కస్టమర్ డేటాబేస్</button>
                 <button class="btn-top admin-only" onclick="openReport()">📊 రిపోర్ట్స్</button>
-                <button class="btn-top admin-only" style="background-color:#0ea5e9; color:white; border:none;" onclick="openMonthlyPasses()">🎫 మంత్లీ పాసులు</button>
+                <button class="btn-top" id="btn-monthly-passes" style="background-color:#0ea5e9; color:white; border:none; display:none;" onclick="openMonthlyPasses()">🎫 మంత్లీ పాసులు</button>
             </div>
         </div>
 
@@ -423,63 +422,6 @@
                 <button class="btn btn-blue" style="flex:1;" onclick="saveMonthlyPass()">✅ సేవ్ చేయి</button>
                 <button class="btn btn-gray" style="flex:1; margin-top:10px;" onclick="document.getElementById('new-pass-form-modal').style.display='none';">రద్దు</button>
             </div>
-        </div>
-    </div>
-
-    <div class="modal-overlay no-print" id="pass-modal">
-        <div class="modal-box">
-            <h2 style="color: var(--shift-color)">💳 పాస్ / కార్డ్ మేనేజ్‌మెంట్</h2>
-            
-            <div class="form-group">
-                <label>ఫోన్ నంబర్</label>
-                <div style="display:flex; gap:10px;">
-                    <input type="tel" id="pass-search-id" placeholder="10 అంకెల నంబర్ ఎంటర్ చేయండి" maxlength="15" style="flex:1;">
-                    <button class="btn btn-blue" style="margin-top:0; width:auto; padding: 10px 15px;" onclick="searchPass()">వెతుకు</button>
-                </div>
-            </div>
-
-            <div class="form-group">
-                <label>వాహన నంబర్ (Vehicle Number)</label>
-                <input type="text" id="pass-vehicle-number" placeholder="ఉదా: TS09AB1234" oninput="this.value = this.value.toUpperCase()" maxlength="15">
-            </div>
-
-            <div id="pass-details" style="display:none; background:#f8fafc; padding:15px; border-radius:6px; border:1px solid #e2e8f0; margin-bottom:15px;">
-                <p style="margin:5px 0;"><strong>పేరు:</strong> <span id="pass-display-name">--</span></p>
-                <p style="margin:5px 0;"><strong>వాడిన మొత్తం:</strong> ₹<span id="pass-display-used">0.00</span></p>
-                <p style="margin:5px 0; font-size:18px;"><strong>బ్యాలెన్స్:</strong> <strong style="color:var(--open-color);">₹<span id="pass-display-balance">0.00</span></strong></p>
-                
-                <hr style="border:0; border-top:1px solid #ccc; margin:15px 0;">
-                
-                <h4 style="margin-top:0;">బ్యాలెన్స్ యాడ్ చేయండి</h4>
-                <div class="form-group">
-                    <label>అమౌంట్ (₹)</label>
-                    <input type="number" id="pass-recharge-amount" min="0" placeholder="ఉదా: 500">
-                </div>
-                <div class="form-group">
-                    <label>చెల్లింపు విధానం</label>
-                    <select id="pass-recharge-method">
-                        <option value="CASH">నగదు (Cash)</option>
-                        <option value="ONLINE">ఆన్‌లైన్ (UPI)</option>
-                    </select>
-                </div>
-                
-                <div style="display:flex; gap:10px; margin-top:10px; flex-wrap:wrap;">
-                    <button class="btn btn-green" style="margin-top:0; flex:1; min-width:100px;" onclick="rechargePass()">రీఛార్జ్ చేయి</button>
-                    <button class="btn btn-whatsapp" style="margin-top:0; flex:1; min-width:100px;" onclick="whatsappPassReceipt()">📱 వాట్సాప్</button>
-                    <button class="btn btn-outline" style="margin-top:0; flex:1; min-width:100px; background:white; padding: 10px;" onclick="printPassReceipt()">🖨️ ప్రింట్</button>
-                </div>
-            </div>
-
-            <div id="pass-register" style="display:none; background:#fff1f2; padding:15px; border-radius:6px; border:1px solid #fecdd3; margin-bottom:15px;">
-                <h4 style="margin-top:0; color:var(--occupied-color);">కార్డ్ లేదు. కొత్తది క్రియేట్ చేయండి.</h4>
-                <div class="form-group">
-                    <label>కస్టమర్ పేరు</label>
-                    <input type="text" id="pass-new-name">
-                </div>
-                <button class="btn btn-red" onclick="registerNewPass()">కొత్త పాస్ క్రియేట్ చేయి</button>
-            </div>
-
-            <button class="btn btn-gray" onclick="closeModals()">మూసివేయి</button>
         </div>
     </div>
 
@@ -1049,9 +991,7 @@
             if(document.getElementById('admin-settings-modal').style.display === 'flex') {
                 renderAdminUserList();
             }
-            if(document.getElementById('pass-modal').style.display === 'flex') {
-                searchPass();
-            }
+
             if(document.getElementById('customer-db-modal').style.display === 'flex') {
                 filterCustomerDB();
             }
@@ -1492,147 +1432,6 @@
             }
         }
 
-        function openPassModal() {
-            document.getElementById('pass-search-id').value = '';
-            document.getElementById('pass-recharge-amount').value = '';
-            document.getElementById('pass-new-name').value = '';
-            document.getElementById('pass-vehicle-number').value = ''; 
-            
-            document.getElementById('pass-details').style.display = 'none';
-            document.getElementById('pass-register').style.display = 'none';
-            document.getElementById('pass-modal').style.display = 'flex';
-        }
-
-        function searchPass() {
-            const id = document.getElementById('pass-search-id').value.trim();
-            if (!id) return;
-            
-            if (passes && passes[id]) {
-                document.getElementById('pass-display-name').innerText = escapeHTML(passes[id].name);
-                document.getElementById('pass-display-balance').innerText = parseFloat(passes[id].balance || 0).toFixed(2);
-                document.getElementById('pass-display-used').innerText = parseFloat(passes[id].used || 0).toFixed(2);
-                if (passes[id].vehicle) {
-                    document.getElementById('pass-vehicle-number').value = passes[id].vehicle;
-                } else {
-                    document.getElementById('pass-vehicle-number').value = '';
-                }
-                document.getElementById('pass-details').style.display = 'block';
-                document.getElementById('pass-register').style.display = 'none';
-            } else {
-                document.getElementById('pass-vehicle-number').value = '';
-                document.getElementById('pass-details').style.display = 'none';
-                document.getElementById('pass-register').style.display = 'block';
-            }
-        }
-
-        function registerNewPass() {
-            const id = document.getElementById('pass-search-id').value.trim();
-            const name = document.getElementById('pass-new-name').value.trim();
-            if (!id || id.length < 10 || !name) return alert("దయచేసి కస్టమర్ పేరు మరియు సరైన 10 అంకెల ఫోన్ నంబర్ ఎంటర్ చేయండి.");
-            
-            if(!passes) passes = {};
-            const newVehicle = (document.getElementById('pass-vehicle-number').value || '').trim();
-            passes[id] = { name: name, balance: 0, used: 0, vehicle: newVehicle };
-            
-            if (!isTester) {
-                firebase.database().ref('/passes/' + id).set(passes[id]).catch(e => console.error('New pass sync error:', e));
-            }
-            searchPass();
-            showToast("కొత్త పాస్ అకౌంట్ క్రియేట్ చేయబడింది.");
-        }
-
-        function rechargePass() {
-            const id = document.getElementById('pass-search-id').value.trim();
-            const amount = parseFloat(document.getElementById('pass-recharge-amount').value) || 0;
-            const method = document.getElementById('pass-recharge-method').value;
-
-            if (!id || id.length < 10) return alert("దయచేసి సరైన ఫోన్ నంబర్‌ను ఎంటర్ చేయండి.");
-            if (amount <= 0) return alert("దయచేసి సరైన అమౌంట్ ఎంటర్ చేయండి.");
-            if (!passes[id]) return alert("పాస్ అకౌంట్ దొరకలేదు.");
-
-            passes[id].balance = parseFloat(passes[id].balance || 0) + amount;
-            const vehicleNo = (document.getElementById('pass-vehicle-number').value || '').trim();
-            if (vehicleNo) passes[id].vehicle = vehicleNo;
-
-            if (method === 'CASH') {
-                currentShift.cash = parseFloat(currentShift.cash || 0) + amount;
-                globalStats.totalCash = parseFloat(globalStats.totalCash || 0) + amount;
-            } else {
-                currentShift.online = parseFloat(currentShift.online || 0) + amount;
-                globalStats.totalOnline = parseFloat(globalStats.totalOnline || 0) + amount;
-            }
-            
-            saveSessionLocally();
-
-            if (!isTester) {
-                firebase.database().ref('/passes/' + id).set(passes[id]).catch(e => console.error('Pass recharge sync error:', e));
-                firebase.database().ref('/globalStats').set(globalStats).catch(e => console.error(e));
-                if (currentShift.active && currentShift.role !== 'tester') {
-                    db.ref('/activeSessions/' + currentShift.username).set(currentShift).catch(e => console.error(e));
-                }
-            }
-            
-            document.getElementById('pass-recharge-amount').value = '';
-            searchPass();
-            updateLiveAdminDashboard();
-            showToast(`₹${amount} బ్యాలెన్స్ యాడ్ చేయబడింది (${method === 'CASH' ? 'నగదు' : 'ఆన్‌లైన్'}).`);
-        }
-
-        function printPassReceipt() {
-            const phone = document.getElementById('pass-search-id').value.trim();
-            if (!phone || !passes[phone]) return alert("దయచేసి సరైన పాస్‌ని ఎంచుకోండి.");
-
-            const pass = passes[phone];
-            const vehicleNo = (document.getElementById('pass-vehicle-number').value || '').trim();
-            document.body.className = 'print-mode-receipt';
-            document.getElementById('receipt-type').innerText = 'మంత్లీ పాస్ రసీదు';
-            
-            let printHTML = `
-                <div class="receipt-row"><span>తేదీ:</span> <span>${new Date().toLocaleString('te-IN')}</span></div>
-                <div class="receipt-row"><span>ఆపరేటర్:</span> <span>${escapeHTML(currentShift.name)}</span></div>
-                <div class="receipt-line"></div>
-                <div class="receipt-row"><span>పేరు:</span> <strong>${escapeHTML(passes[phone].name || '--')}</strong></div>
-                <div class="receipt-row"><span>ఫోన్ నంబర్:</span> <strong>${escapeHTML(phone)}</strong></div>
-                ${vehicleNo ? `<div class="receipt-row"><span>వాహన నంబర్:</span> <strong>${escapeHTML(vehicleNo)}</strong></div>` : ''}
-                <div class="receipt-line"></div>
-                <div class="receipt-row" style="font-size:16px;"><span>ప్రస్తుత బ్యాలెన్స్:</span> <strong>₹${parseFloat(pass.balance).toFixed(2)}</strong></div>
-                <div class="receipt-line"></div>
-                <div style="text-align:center; font-size:10px; margin-top:5px;">పార్కింగ్ చెక్-అవుట్ సమయంలో ఈ బ్యాలెన్స్ వాడబడుతుంది.</div>
-                <div class="receipt-line"></div>
-                <div style="font-size:9px; color:#333; margin-top:6px; line-height:1.5;">
-                    <div>⚠ పార్కింగ్ మీ విలువైన వస్తువుల బాధ్యతను తీసుకోదు.</div>
-                    <div>⚖ తర్కాలు గుంటూరు కోర్టులో పరిష్కరించబడతాయి.</div>
-                    <div>ℹ పాస్ బ్యాలెన్స్ రీఫండ్ చేయబడదు.</div>
-                </div>
-            `;
-            
-            document.getElementById('receipt-body').innerHTML = printHTML;
-            setTimeout(() => { window.print(); }, 500);
-        }
-
-        function whatsappPassReceipt() {
-            const phone = document.getElementById('pass-search-id').value.trim();
-            if (!phone || !passes[phone]) return alert("దయచేసి సరైన పాస్‌ని ఎంచుకోండి.");
-
-            const pass = passes[phone];
-            const vehicleNo = (document.getElementById('pass-vehicle-number').value || '').trim();
-            const dateStr = new Date().toLocaleString('te-IN');
-            const operatorName = escapeHTML(currentShift.name);
-
-            const msg = `*శ్రీ వెంకటేశ్వర పార్కింగ్*\n💳 *మంత్లీ పాస్ రసీదు*\n\n` +
-                `📅 తేదీ: ${dateStr}\n` +
-                `👤 పేరు: ${pass.name || '--'}\n` +
-                `📱 ఫోన్: ${phone}\n` +
-                (vehicleNo ? `🚘 వాహన నంబర్: ${vehicleNo}\n` : '') +
-                `\n💰 ప్రస్తుత బ్యాలెన్స్: ₹${parseFloat(pass.balance).toFixed(2)}\n` +
-                `👷 ఆపరేటర్: ${operatorName}\n\n` +
-                `_పార్కింగ్ చెక్-అవుట్ సమయంలో ఈ బ్యాలెన్స్ వాడబడుతుంది._\n\n` +
-                `⚠ పార్కింగ్ మీ విలువైన వస్తువుల బాధ్యతను తీసుకోదు.\n` +
-                `⚖ తర్కాలు గుంటూరు కోర్టులో పరిష్కరించబడతాయి.\n` +
-                `ℹ పాస్ బ్యాలెన్స్ రీఫండ్ చేయబడదు.`;
-
-            sendWhatsAppReceipt(phone, msg, null);
-        }
 
         function reprintEntryReceipt() {
             if(!currentActiveSpot) return;
@@ -2248,11 +2047,13 @@
             const badge = document.getElementById('operator-badge');
             const btn = document.getElementById('btn-shift-action');
             const statBtn = document.getElementById('btn-worker-stats');
-            const passBtn = document.getElementById('btn-pass-manage');
 
             document.querySelectorAll('.admin-only').forEach(b => {
                 b.style.display = (currentShift.role === "admin" || currentShift.role === "tester") ? "inline-block" : "none";
             });
+            // Monthly passes visible to ALL operators — not admin-only
+            const mpBtn = document.getElementById('btn-monthly-passes');
+            if (mpBtn) mpBtn.style.display = currentShift.active ? 'inline-block' : 'none';
             document.querySelectorAll('.tester-only').forEach(b => b.style.display = currentShift.role === "tester" ? "block" : "none");
             
             if (currentShift.active) {
@@ -2267,12 +2068,10 @@
                 
                 btn.style.backgroundColor = "var(--occupied-color)";
                 statBtn.style.display = "inline-block";
-                passBtn.style.display = "inline-block"; 
             } else {
                 badge.innerHTML = `<span style="color:var(--occupied-color)">🔴 సిస్టమ్ లాక్ చేయబడింది. దయచేసి లాగిన్ అవ్వండి.</span>`;
                 btn.innerHTML = "▶ సెక్యూర్ లాగిన్"; btn.style.backgroundColor = "var(--shift-color)";
                 statBtn.style.display = "none";
-                passBtn.style.display = "none";
             }
             updateLiveAdminDashboard();
         }
@@ -2411,14 +2210,12 @@
             const startTs = new Date(+sParts[0], +sParts[1]-1, +sParts[2], 0,  0,  0,   0).getTime();
             const endTs   = new Date(+eParts[0], +eParts[1]-1, +eParts[2], 23, 59, 59, 999).getTime();
 
-            // FIX v3.8.3.8.2.3: Query shiftHistory by logoutTime with an expanded range
-            // (48h before startTs) so cross-boundary shifts (e.g. login=prev day/month,
-            // logout=within selected range) are always fetched from Firebase and not
-            // silently dropped. Plain .once('value') on the whole node was unreliable for
-            // large datasets and did not respect the month boundary correctly.
-            const expandedStart = startTs - 48 * 60 * 60 * 1000; // 48h buffer for overnight shifts
+            // BUG FIX: orderByChild('logoutTime').startAt(X) silently drops shifts where
+            // logoutTime=null (crashes, auto-saves, active-at-month-end). Firebase treats null
+            // as lowest sort value — below any number — so null records never pass startAt().
+            // Fix: fetch ALL shiftHistory with plain once('value') and filter client-side.
             Promise.all([
-                db.ref('/shiftHistory').orderByChild('logoutTime').startAt(expandedStart).endAt(endTs).once('value'),
+                db.ref('/shiftHistory').once('value'),
                 db.ref('/activeSessions').once('value')
             ]).then(([histSnap, sessSnap]) => {
                 const histData = histSnap.val();
@@ -2463,26 +2260,21 @@
                     dayMap[dateStr][key].pass    += parseFloat(p || 0);
                 }
 
+                // BUG FIX: Live sessions have no logoutTime yet. Revenue should always
+                // land on TODAY's date (when the revenue is actually being collected),
+                // not on loginTime which could be from a previous month/day.
+                const todayStr = getLocalDateString(new Date());
+                const nowTs    = Date.now();
+
                 liveSessionsArray.forEach(shift => {
                     if (!shift) return;
-                    // FIX v3.8.3.8.2.3: For live sessions use loginTime (they have no logoutTime yet).
-                    // But check both login and "now" so an operator who logged in before the period
-                    // but is actively collecting revenue now is not dropped from a "today" report.
-                    const lt = shift.loginTime || Date.now();
-                    const liveNow = Date.now();
-                    const revenueTs = (lt >= startTs && lt <= endTs) ? lt
-                                    : (liveNow >= startTs && liveNow <= endTs) ? liveNow
-                                    : null;
-                    if (!revenueTs) return;
-                    const dateStr = getLocalDateString(new Date(revenueTs));
-                    addToDay(dateStr, shift.name || 'Unknown', shift.handled, shift.cash, shift.online, shift.passUsage, true, shift.loginTime, shift.username);
+                    if (nowTs < startTs || nowTs > endTs) return; // today not in selected range
+                    addToDay(todayStr, shift.name || 'Unknown', shift.handled, shift.cash, shift.online, shift.passUsage, true, shift.loginTime, shift.username);
                 });
 
                 if (currentShift && currentShift.active && currentShift.role !== 'tester') {
-                    const refTime = currentShift.loginTime || Date.now();
-                    if (refTime >= startTs && refTime <= endTs) {
-                        const dateStr = getLocalDateString(new Date(refTime));
-                        addToDay(dateStr, currentShift.name || 'Unknown', currentShift.handled, currentShift.cash, currentShift.online, currentShift.passUsage, true, currentShift.loginTime, currentShift.username);
+                    if (nowTs >= startTs && nowTs <= endTs) {
+                        addToDay(todayStr, currentShift.name || 'Unknown', currentShift.handled, currentShift.cash, currentShift.online, currentShift.passUsage, true, currentShift.loginTime, currentShift.username);
                     }
                 }
 
@@ -2513,7 +2305,30 @@
                     tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:20px;color:#94a3b8;">ఈ తేదీల్లో ఎలాంటి సమాచారం లేదు.</td></tr>';
                     document.getElementById('rep-daywise-foot').style.display = 'none';
                 } else {
+                    // BUG FIX: Build monthly grouping — insert a month-header row whenever
+                    // the month changes, and a month-subtotal row at the end of each month.
+                    let currentMonth = null;
+                    let monthCash = 0, monthOnline = 0, monthHandled = 0, monthPass = 0;
+
+                    function flushMonthRow(monthKey) {
+                        const [yr, mo] = monthKey.split('-');
+                        const label = new Date(+yr, +mo-1, 1).toLocaleDateString('te-IN', {month:'long', year:'numeric'});
+                        tbody.innerHTML += `<tr style="background:#1e293b; color:white;">
+                            <td colspan="2" style="padding:8px 10px; font-weight:bold; font-size:13px;">📅 ${label} — నెల మొత్తం</td>
+                            <td style="padding:8px; text-align:center; font-weight:bold;">${monthHandled}</td>
+                            <td style="padding:8px; text-align:right; color:#86efac;">₹${monthCash.toFixed(2)}</td>
+                            <td style="padding:8px; text-align:right; color:#93c5fd;">₹${monthOnline.toFixed(2)}</td>
+                            <td style="padding:8px; text-align:right; color:#c4b5fd;">₹${monthPass.toFixed(2)}</td>
+                            <td style="padding:8px; text-align:right; font-size:15px; font-weight:bold; color:#fde68a;">₹${(monthCash+monthOnline).toFixed(2)}</td>
+                            <td></td>
+                        </tr>`;
+                        monthCash = 0; monthOnline = 0; monthHandled = 0; monthPass = 0;
+                    }
+
                     sortedDates.forEach((dateStr, di) => {
+                        const monthKey = dateStr.slice(0, 7); // YYYY-MM
+                        if (currentMonth && currentMonth !== monthKey) flushMonthRow(currentMonth);
+                        currentMonth = monthKey;
                         const ops = dayMap[dateStr];
                         const opNames = Object.keys(ops);
                         let dayHandled = 0, dayCash = 0, dayOnline = 0, dayPass = 0;
@@ -2563,7 +2378,10 @@
                         }
 
                         totalHandled += dayHandled; totalCash += dayCash; totalOnline += dayOnline; totalPass += dayPass;
+                        monthHandled += dayHandled; monthCash += dayCash; monthOnline += dayOnline; monthPass += dayPass;
                     });
+                    // flush the last month
+                    if (currentMonth) flushMonthRow(currentMonth);
 
                     document.getElementById('rep-daywise-foot').style.display = '';
                     document.getElementById('foot-handled').innerText = totalHandled;
@@ -2785,9 +2603,11 @@
                     <td style="padding:10px;">${statusBadge}</td>
                     <td style="padding:10px;">
                         <div style="display:flex; gap:5px; flex-wrap:wrap;">
+                            ${(currentShift.role === 'admin' || currentShift.role === 'tester') ? `
                             <button onclick="editMonthlyPass('${escapeHTML(p.phone)}')" style="background:#3b82f6;color:white;border:none;border-radius:4px;padding:4px 8px;cursor:pointer;font-size:12px;">✏️ సవరించు</button>
                             <button onclick="renewMonthlyPass('${escapeHTML(p.phone)}')" style="background:#10b981;color:white;border:none;border-radius:4px;padding:4px 8px;cursor:pointer;font-size:12px;">🔄 రిన్యూ</button>
                             <button onclick="deleteMonthlyPass('${escapeHTML(p.phone)}')" style="background:#ef4444;color:white;border:none;border-radius:4px;padding:4px 8px;cursor:pointer;font-size:12px;">🗑️</button>
+                            ` : '<span style="font-size:12px;color:#94a3b8;">వీక్షణ మాత్రమే</span>'}
                         </div>
                     </td>
                 </tr>`;
