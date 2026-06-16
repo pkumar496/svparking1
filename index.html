@@ -783,21 +783,25 @@
                 try {
                     const activeSnap = await db.ref('/activeSessions/' + parsed.username).once('value');
                     if (activeSnap.exists()) {
-                        // Session is live server-side (autoSave keeps activeSessions intact) — restore
                         currentShift = parsed;
                     } else {
-                        // activeSessions is gone → operator did a real logout on another device/tab.
-                        // Discard stale local copy — do NOT re-open.
-                        clearLocalSession();
+                        // Server record missing. Could be a network drop OR a real logout.
+                        // Prioritize restoring local session if it's today's date.
+                        currentShift = parsed;
+                        console.log('Restoring session from local cache as server record was missing.');
                     }
                 } catch (networkErr) {
-                    // Firebase unreachable — restore from local as fallback
-                    console.warn('Could not validate session with server; restoring from local cache.', networkErr);
+                    console.warn('Firebase unreachable; restoring from local cache.', networkErr);
                     currentShift = parsed;
                 }
             } catch (e) {
                 clearLocalSession();
             }
+        }
+
+        function getShiftKey(shift) {
+            if (!shift) return null;
+            return `${shift.username || 'unknown'}_${shift.loginTime}`;
         }
 
         function saveSessionLocally() {
@@ -1161,7 +1165,7 @@
             if (currentShift && currentShift.active && currentShift.role !== 'tester') {
                 const lt = currentShift.loginTime;
                 if (lt && lt >= todayStart && lt <= todayEnd) {
-                    seenLoginTimes.add(String(lt));
+                    seenLoginTimes.add(getShiftKey(currentShift));
                     tHandled += (currentShift.handled || 0);
                     tCash    += parseFloat(currentShift.cash || 0);
                     tOnline  += parseFloat(currentShift.online || 0);
@@ -1169,14 +1173,21 @@
                 }
             }
 
+            // ZOMBIE FIX: track seen usernames so any zombie session for the same
+            // user (different loginTime) is also blocked, not just the current one.
+            const seenUsernames = new Set();
+            if (currentShift && currentShift.active && currentShift.username) {
+                seenUsernames.add(currentShift.username);
+            }
             if (activeSessions) {
                 Object.values(activeSessions).forEach(session => {
                     if (!session || session.role === 'tester') return;
-                    if (session.username === currentShift.username) return;
+                    if (seenUsernames.has(session.username)) return; // skip zombie or duplicate
                     const lt = session.loginTime;
                     if (!lt || lt < todayStart || lt > todayEnd) return;
-                    if (seenLoginTimes.has(String(lt))) return;
-                    seenLoginTimes.add(String(lt));
+                    if (seenLoginTimes.has(getShiftKey(session))) return;
+                    seenLoginTimes.add(getShiftKey(session));
+                    seenUsernames.add(session.username);
                     tHandled += (session.handled || 0);
                     tCash    += parseFloat(session.cash || 0);
                     tOnline  += parseFloat(session.online || 0);
@@ -1185,16 +1196,20 @@
             }
 
             let historyArray = Array.isArray(shiftHistory) ? shiftHistory : Object.values(shiftHistory || {});
+            // AUTOSAVE DEDUP FIX: sort clean logouts before autoSaved entries so the
+            // clean record is processed first and the autoSaved duplicate is skipped.
+            historyArray = [...historyArray].sort((a, b) => (a&&a.autoSaved?1:0) - (b&&b.autoSaved?1:0));
             historyArray.forEach(shift => {
                 if (!shift) return;
                 const lt = shift.loginTime;
                 const lo = shift.logoutTime;
-                // Count shift if it logged out today (captures overnight vehicles checked out this morning)
-                // OR if it logged in today (same-day shifts). Use logoutTime as primary signal for revenue.
                 const refTime = (lo && lo >= todayStart && lo <= todayEnd) ? lo : lt;
                 if (!refTime || refTime < todayStart || refTime > todayEnd) return;
-                if (seenLoginTimes.has(String(lt))) return;
-                seenLoginTimes.add(String(lt));
+                if (seenLoginTimes.has(getShiftKey(shift))) return;
+                // AUTOSAVE DEDUP: if a clean shift for this username is already counted, skip the autoSaved copy
+                if (shift.autoSaved && seenUsernames.has(shift.username)) return;
+                seenLoginTimes.add(getShiftKey(shift));
+                seenUsernames.add(shift.username);
                 tHandled += (shift.handled || 0);
                 tCash    += parseFloat(shift.cash || 0);
                 tOnline  += parseFloat(shift.online || 0);
@@ -1220,20 +1235,22 @@
             if (histArr.length === 0 && !isTester) {
                 const todayStart = new Date().setHours(0, 0, 0, 0);
                 const todayEnd   = new Date().setHours(23, 59, 59, 999);
-                db.ref('/shiftHistory').orderByChild('logoutTime').startAt(todayStart).endAt(todayEnd).once('value').then(snap => {
+                // FETCH FIX: plain once('value') — orderByChild('logoutTime').startAt()
+                // silently drops autoSaved entries where logoutTime=null.
+                db.ref('/shiftHistory').once('value').then(snap => {
                     if (snap.exists()) {
                         const fetched = snap.val();
                         const fetchedArr = Array.isArray(fetched) ? fetched : Object.values(fetched);
-                        // Merge into shiftHistory without overwriting entries already arrived via listener
                         const existingArr = Array.isArray(shiftHistory) ? shiftHistory : Object.values(shiftHistory || {});
                         const merged = {};
                         [...existingArr, ...fetchedArr].forEach(s => {
                             if (!s || !s.loginTime) return;
                             const k = (s.username || s.name || '') + '_' + s.loginTime;
-                            if (!merged[k] || fetchedArr.includes(s)) merged[k] = s;
+                            // Prefer clean logout entry over autoSaved for same key
+                            if (!merged[k] || (!s.autoSaved && merged[k].autoSaved)) merged[k] = s;
                         });
                         shiftHistory = Object.values(merged);
-                        updateLiveAdminDashboard(); // re-render with real data
+                        updateLiveAdminDashboard();
                     }
                 }).catch(e => console.warn('Dashboard auto-fetch failed:', e));
                 // Render with whatever we have now (may be zeros), will re-render above when data arrives
@@ -1291,7 +1308,7 @@
                 const [histSnap, sessSnap] = await Promise.all([
                     // FIX v3.8.3.8.2.2: Query by logoutTime (revenue day) so shifts that logged in
                     // yesterday but were checked out today are included in today's dashboard totals.
-                    db.ref('/shiftHistory').orderByChild('logoutTime').startAt(todayStart).endAt(todayEnd).once('value'),
+                    db.ref('/shiftHistory').once('value'), // FETCH FIX: plain — orderByChild drops null-logoutTime autoSaved entries
                     db.ref('/activeSessions').once('value')
                 ]);
 
@@ -1512,6 +1529,7 @@
             currentActiveSpot.type = type;
             currentActiveSpot.hasPass = hasPass;
             currentActiveSpot.entryTime = Date.now();
+            currentActiveSpot.entryOperator = currentShift.username;
 
             globalStats.totalEntered = (globalStats.totalEntered || 0) + 1;
             autoSaveToCustomerDB();
@@ -1750,10 +1768,20 @@
             currentActiveSpot.entryTime = null;
 
             if (!isTester) {
+                const entryOp = currentActiveSpot.entryOperator || 'Unknown';
+                firebase.database().ref('/transactions').push({
+                    plate: currentActiveSpot.plate,
+                    fee: currentFeeCalculation,
+                    entryOp: entryOp,
+                    exitOp: currentShift.username,
+                    time: Date.now(),
+                    type: currentActiveSpot.type,
+                    paymentMethod: method
+                });
                 firebase.database().ref('/spots/' + (spotId - 1)).set(currentActiveSpot);
                 if(method === 'PASS') firebase.database().ref('/passes/' + spotPhone).set(passes[spotPhone]);
                 firebase.database().ref('/globalStats').set(globalStats);
-                
+
                 if(currentShift.active && currentShift.role !== 'tester') {
                     db.ref('/activeSessions/' + currentShift.username).set(currentShift).catch(e => console.error(e));
                 }
@@ -1916,8 +1944,8 @@
                     let spotsArray = Array.isArray(spots) ? spots : Object.values(spots || {});
                     let occupiedCount = spotsArray.filter(s => s && s.isOccupied).length;
 
-                    // FIX: Admin Zero-Shift prevention (Skips logging $0 admin checks)
-                    if (finalHandled > 0 || finalSubTotal > 0 || p > 0) {
+                    // FIX: Allow admin shifts to be recorded even if zero revenue
+                    if (finalHandled > 0 || finalSubTotal > 0 || p > 0 || currentShift.role === 'admin') {
                         newShift = { 
                             name: finalName,
                             username: currentShift.username || "",
@@ -1956,9 +1984,8 @@
                         customerDB: customerDB || {}
                     });
 
-                    // AUTO-SAVE DEDUP: autoSaveShiftOnClose() may have already pushed an
-                    // autoSaved:true entry. Delete it first, then push the real logout entry.
-                    // This ensures only one entry per shift in shiftHistory — no double-count.
+                    // AUTO-SAVE DEDUP: Remove any auto-saved entries for this shift
+                    // before pushing the final record. Uses unified shift key logic (loginTime).
                     if (newShift) {
                         if (wasAutoSaved && currentShift.loginTime) {
                             try {
@@ -2028,13 +2055,11 @@
                 saveSessionLocally();
                 
                 if (currentShift.role !== 'tester') {
-                    db.ref('/activeSessions/' + currentShift.username).onDisconnect().remove();
-                    // FIX Bug 1: Do NOT call pushToCloud() here. At login time, globalStats/spots
-                    // in memory are still initialised to zero defaults — the Firebase on('value')
-                    // listener hasn't fired yet. Calling pushToCloud() would overwrite valid cloud
-                    // data with these stale zeros, inflating/corrupting revenue.
-                    // Instead, only register the active session so other clients can see this user.
-                    db.ref('/activeSessions/' + currentShift.username).set(currentShift).catch(e => console.error(e));
+                    // ZOMBIE FIX: Remove any stale activeSessions entry for this username BEFORE
+                    // writing the new one. Prevents old zombie + new live session double-counting.
+                    db.ref('/activeSessions/' + currentShift.username).remove()
+                        .then(() => db.ref('/activeSessions/' + currentShift.username).set(currentShift))
+                        .catch(e => console.error(e));
                 }
                 closeModals();
                 updateShiftUI();
@@ -2237,15 +2262,9 @@
                 const seenLoginTimes = new Set();
 
                 function addToDay(dateStr, name, h, c, o, p, isLive, loginTime, username) {
-                    // BUG D FIX: Use username+loginTime as dedup key so two different
-                    // operators logging in at the same millisecond are never collapsed.
-                    // Fallback includes handled+cash+online so two zero-value shifts from
-                    // same operator on same day are not incorrectly merged.
-                    const loginKey = loginTime
-                        ? `${username || name}_${loginTime}`
-                        : `${username || name}_${h}_${c}_${o}_${p}`;
-                    if (seenLoginTimes.has(loginKey)) return;
-                    seenLoginTimes.add(loginKey);
+                    const shiftKey = getShiftKey({ username, loginTime });
+                    if (seenLoginTimes.has(shiftKey)) return;
+                    seenLoginTimes.add(shiftKey);
 
                     if (!dayMap[dateStr]) dayMap[dateStr] = {};
                     
