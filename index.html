@@ -505,6 +505,26 @@
                 <input type="number" id="input-cash-received" placeholder="ఖాళీగా వదిలేయవచ్చు" min="0">
             </div>
 
+            <!-- Admin-only: vehicle type correction + flat discount — hidden for operators -->
+            <div id="admin-checkout-tools" style="display:none; border:2px solid #f59e0b; border-radius:8px; padding:12px; margin-bottom:12px; background:#fffbeb;">
+                <div style="font-size:12px; font-weight:bold; color:#92400e; margin-bottom:10px;">⚙️ అడ్మిన్ టూల్స్</div>
+                <div class="form-group" style="margin-bottom:10px;">
+                    <label style="font-size:12px; color:#92400e;">వాహన రకం సరిచేయి</label>
+                    <select id="admin-vehicle-type-fix" onchange="adminFixVehicleType()" style="border:1px solid #f59e0b;">
+                        <option value="">-- మార్చాలంటే ఎంచుకోండి --</option>
+                        <option value="2">🚲 సైకిల్</option>
+                        <option value="3">🏍️ బైక్ / స్కూటర్</option>
+                        <option value="4">🛺 ఆటో</option>
+                        <option value="5">🚗 కారు</option>
+                    </select>
+                </div>
+                <div class="form-group" style="margin-bottom:0;">
+                    <label style="font-size:12px; color:#92400e;">అడ్మిన్ డిస్కౌంట్ (₹ తగ్గించు)</label>
+                    <input type="number" id="admin-discount-amount" placeholder="0" min="0" step="1"
+                           oninput="updateLiveCheckoutStats()" style="border:1px solid #f59e0b;">
+                </div>
+            </div>
+
             <button class="btn btn-red" id="btn-checkout-submit" onclick="submitCheckout(this)">చెక్-అవుట్ & ఫైనల్ రసీదు ప్రింట్ చేయి</button>
             <button class="btn btn-gray" onclick="closeModals()">మూసివేయి</button>
         </div>
@@ -598,7 +618,7 @@
                 </p>
                 <div style="display:flex; gap:10px; margin-bottom:10px; flex-wrap: wrap;">
                     <div class="form-group" style="flex:1; min-width: 80px;"><label>సైకిల్ (ప్రతి 24గం. కు ₹)</label><input type="number" id="rate-2" min="0" step="1"></div>
-                    <div class="form-group" style="flex:1; min-width: 80px;"><label>బైక్ (ప్రతి 12గం. కు ₹)</label><input type="number" id="rate-3" min="0" step="1"></div>
+                    <div class="form-group" style="flex:1; min-width: 80px;"><label>బైక్ (పగలు/రాత్రి స్లాట్ కు ₹)</label><input type="number" id="rate-3" min="0" step="1"></div>
                     <div class="form-group" style="flex:1; min-width: 80px;"><label>ఆటో (ప్రతి 12గం. కు ₹)</label><input type="number" id="rate-4" min="0" step="1"></div>
                     <div class="form-group" style="flex:1; min-width: 80px;"><label>కారు (ప్రతి 12గం. కు ₹)</label><input type="number" id="rate-5" min="0" step="1"></div>
                     <div class="form-group" style="flex:1; min-width: 80px;"><label>పాస్ డిస్కౌంట్ (%)</label><input type="number" id="admin-pass-discount" min="0" max="100" step="1"></div>
@@ -925,6 +945,10 @@
         // This ensures currentShift is properly validated (or cleared) before the first
         // on('value') fires and calls updateShiftUI()/renderGrid().
         restoreSessionFromLocalStorage().then(() => {
+
+        // Re-render immediately after restore so click listeners are correct
+        updateShiftUI();
+        renderGrid();
 
         db.ref('/').on('value', (snapshot) => {
             const data = snapshot.val();
@@ -1364,7 +1388,7 @@
                 
                 spot.isOccupied ? occ++ : open++;
                 const spotDiv = document.createElement('div');
-                spotDiv.className = `spot ${spot.isOccupied ? 'occupied' : 'open'} ${!currentShift.active ? 'disabled' : ''}`;
+                spotDiv.className = `spot ${spot.isOccupied ? 'occupied' : 'open'}`;
                 
                 if(spot.isOccupied && spot.plate) {
                     spotDiv.title = `బండి: ${escapeHTML(spot.plate)}` + (spot.phone ? ` | ఫోన్: ${spot.phone}` : '');
@@ -1383,7 +1407,16 @@
                     spotDiv.innerHTML += `<div style="font-size:8px; color:#8b5cf6; margin-top:2px;">🎟️ పాస్</div>`;
                 }
                 
-                if(currentShift.active) spotDiv.addEventListener('click', () => handleSpotClick(index));
+                spotDiv.addEventListener('click', () => {
+                    if (!currentShift || !currentShift.active) {
+                        document.getElementById('login-user').value = '';
+                        document.getElementById('login-pass').value = '';
+                        document.getElementById('login-modal').style.display = 'flex';
+                        setTimeout(() => document.getElementById('login-user').focus(), 50);
+                    } else {
+                        handleSpotClick(index);
+                    }
+                });
                 grid.appendChild(spotDiv);
             });
 
@@ -1407,6 +1440,14 @@
                 document.getElementById('checkout-title').innerText = `స్పాట్ #${currentActiveSpot.id} వివరాలు`;
                 document.getElementById('info-phone').innerText = currentActiveSpot.phone || "--";
                 document.getElementById('info-plate').innerText = currentActiveSpot.plate || "--";
+                // Show admin tools only for admin/tester
+                const _adminTools = document.getElementById('admin-checkout-tools');
+                const _isAdmin = currentShift.role === 'admin' || currentShift.role === 'tester';
+                _adminTools.style.display = _isAdmin ? 'block' : 'none';
+                if (_isAdmin) {
+                    document.getElementById('admin-vehicle-type-fix').value = '';
+                    document.getElementById('admin-discount-amount').value = '';
+                }
                 
                 if(currentActiveSpot.hasPass) {
                     document.getElementById('input-payment-method').value = 'PASS';
@@ -1582,7 +1623,19 @@
         }
 
         function submitCheckout(btnElement) {
-            if (!currentActiveSpot || !currentActiveSpot.isOccupied) return;
+            // Post-validation: surface errors clearly instead of silent no-op
+            if (!currentActiveSpot) {
+                alert('చెక్-అవుట్ విఫలమైంది: స్పాట్ డేటా కనుగొనబడలేదు. దయచేసి స్పాట్ తిరిగి ఎంచుకోండి.');
+                return;
+            }
+            if (!currentActiveSpot.isOccupied) {
+                alert('ఈ స్పాట్ ఇప్పటికే ఖాళీగా ఉంది. దయచేసి రిఫ్రెష్ చేయండి.');
+                closeModals(); return;
+            }
+            if (!currentShift.active) {
+                alert('సెషన్ గడువు తీరింది. దయచేసి మళ్ళీ లాగిన్ చేయండి.');
+                closeModals(); return;
+            }
             if (btnElement) btnElement.disabled = true; // Fix: Double-click checkout protection
 
             const method = document.getElementById('input-payment-method').value;
@@ -1704,8 +1757,17 @@
                 <div class="receipt-row"><span>రుసుము:</span> <strong>₹${currentFeeCalculation.toFixed(2)}</strong></div>
             `;
             
-            if (appliedDiscountAmount > 0) {
-                printHTML += `<div class="receipt-row" style="font-size:10px; color:#555;"><span>పాస్ డిస్కౌంట్:</span> <span>- ₹${appliedDiscountAmount.toFixed(2)}</span></div>`;
+            const _recAdminDiscEl = document.getElementById('admin-discount-amount');
+            const _recAdminDisc = (_recAdminDiscEl && _recAdminDiscEl.value) ? Math.max(0, parseFloat(_recAdminDiscEl.value)||0) : 0;
+            if (_recAdminDisc > 0) {
+                printHTML += `<div class="receipt-row" style="font-size:10px; color:#e67e22;"><span>అడ్మిన్ డిస్కౌంట్:</span> <span>-₹${_recAdminDisc.toFixed(2)}</span></div>`;
+            } else if (appliedDiscountAmount > 0) {
+                printHTML += `<div class="receipt-row" style="font-size:10px; color:#555;"><span>పాస్ డిస్కౌంట్:</span> <span>-₹${appliedDiscountAmount.toFixed(2)}</span></div>`;
+            }
+            const _typeFixEl = document.getElementById('admin-vehicle-type-fix');
+            if (_typeFixEl && _typeFixEl.value) {
+                const _tL = {"2":"🚲 సైకిల్","3":"🏍️ బైక్","4":"🛺 ఆటో","5":"🚗 కారు"};
+                printHTML += `<div class="receipt-row" style="font-size:10px; color:#e67e22;"><span>వాహన రకం (సవరించిన):</span> <span>${_tL[_typeFixEl.value]||_typeFixEl.value}</span></div>`;
             }
 
             printHTML += `
@@ -1797,6 +1859,13 @@
             setTimeout(() => { window.print(); }, 500);
         }
 
+        function adminFixVehicleType() {
+            const sel = document.getElementById('admin-vehicle-type-fix');
+            if (!sel || !sel.value || !currentActiveSpot) return;
+            currentActiveSpot.type = sel.value;
+            updateLiveCheckoutStats();
+        }
+
         function updateLiveCheckoutStats() {
             if(!currentActiveSpot || !currentActiveSpot.isOccupied) return;
             
@@ -1814,9 +1883,34 @@
                 let blocks = Math.max(1, Math.ceil(elapsedSeconds / (24 * 3600)));
                 rawFee = segmentRate * blocks;
             } else if (currentActiveSpot.type === "3") {
-                // Bike/Scooter: 12hr blocks — ₹20 per 12hrs
-                let blocks = Math.max(1, Math.ceil(elapsedSeconds / (12 * 3600)));
-                rawFee = segmentRate * blocks;
+                // Bike: Day slot 06:00–22:00 = ₹15, Night slot 22:00–06:00 = ₹15.
+                // Count how many slot boundaries the bike crosses between entryTime and now.
+                // Each crossed boundary = one additional ₹15 charge. Minimum 1 slot = ₹15.
+                // Example: parked 18:00, exits 22:30 → crosses 22:00 boundary → 2 slots = ₹30.
+                (function() {
+                    // Slot model: Day 06:00–22:00 = ₹15, Night 22:00–06:00 = ₹15.
+                    // Count how many slot boundaries are crossed entry→exit; each = +₹15.
+                    // Boundaries: 06:00 (night→day) and 22:00 (day→night) every calendar day.
+                    // Examples:
+                    //   6pm  → 10:30pm  crosses 22:00          → 2 slots = ₹30
+                    //   10pm → 5:59am   stays in night          → 1 slot  = ₹15
+                    //   8pm  → 6:30am   crosses 22:00 & 06:00   → 3 slots = ₹45
+                    const RATE = segmentRate;
+                    const entryMs = currentActiveSpot.entryTime || (Date.now() - elapsedSeconds * 1000);
+                    const exitMs  = Date.now();
+
+                    function slotIndex(ms) {
+                        const d = new Date(ms);
+                        const minOfDay = d.getHours() * 60 + d.getMinutes();
+                        const dayNum   = Math.floor(ms / 86400000);
+                        if (minOfDay < 360)  return dayNum * 2 - 1; // 00:00–06:00: night tail
+                        if (minOfDay < 1320) return dayNum * 2;     // 06:00–22:00: day slot
+                        return dayNum * 2 + 1;                       // 22:00–24:00: night slot
+                    }
+
+                    const slotsCrossed = Math.max(1, slotIndex(exitMs) - slotIndex(entryMs) + 1);
+                    rawFee = RATE * slotsCrossed;
+                })();
             } else { 
                 // Auto, Car: 12hr blocks
                 let blocks = Math.max(1, Math.ceil(elapsedSeconds / (12 * 3600)));
@@ -1832,13 +1926,24 @@
             
             currentFeeCalculation = parseFloat(rawFee.toFixed(2));
 
+            // Admin flat ₹ discount — only applied for admin/tester
+            let adminDiscount = 0;
+            const _adminDiscEl = document.getElementById('admin-discount-amount');
+            if (_adminDiscEl && _adminDiscEl.value && (currentShift.role === 'admin' || currentShift.role === 'tester')) {
+                adminDiscount = Math.min(parseFloat(_adminDiscEl.value) || 0, currentFeeCalculation);
+                currentFeeCalculation = parseFloat(Math.max(0, currentFeeCalculation - adminDiscount).toFixed(2));
+            }
+
             document.getElementById('info-fee').style.display = 'block';
             document.getElementById('info-fee').innerText = `₹${currentFeeCalculation.toFixed(2)}`;
             document.getElementById('cash-due-display').innerText = `₹${currentFeeCalculation.toFixed(2)}`;
 
             const discountMsgElement = document.getElementById('info-discount-msg');
-            if (currentActiveSpot.hasPass && appliedDiscountAmount > 0) {
-                discountMsgElement.innerText = `(${systemSettings.passDiscount}% డిస్కౌంట్ వర్తించింది: -₹${appliedDiscountAmount.toFixed(2)})`;
+            if (adminDiscount > 0) {
+                discountMsgElement.innerText = `అడ్మిన్ డిస్కౌంట్: -₹${adminDiscount.toFixed(2)}`;
+                discountMsgElement.style.display = 'block';
+            } else if (currentActiveSpot.hasPass && appliedDiscountAmount > 0) {
+                discountMsgElement.innerText = `(${systemSettings.passDiscount}% పాస్ డిస్కౌంట్: -₹${appliedDiscountAmount.toFixed(2)})`;
                 discountMsgElement.style.display = 'block';
             } else {
                 discountMsgElement.style.display = 'none';
