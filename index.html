@@ -335,7 +335,7 @@
          🎫 MONTHLY PASSES MANAGEMENT MODAL
          ================================================ -->
     <div class="modal-overlay no-print" id="monthly-passes-modal">
-        <div class="modal-box large" style="max-width:900px; max-height:92vh; overflow-y:auto;">
+        <div class="modal-box large" style="width:98vw; max-width:1200px; max-height:94vh; overflow-y:auto; overflow-x:hidden;">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px; flex-wrap:wrap; gap:10px;">
                 <h2 style="margin:0; color:#0ea5e9;">🎫 మంత్లీ పాసులు</h2>
                 <div style="display:flex; gap:8px; flex-wrap:wrap;">
@@ -368,18 +368,18 @@
             <input type="text" id="mp-search" class="customer-search" placeholder="వాహన నంబర్ లేదా ఫోన్ నంబర్ ద్వారా వెతుకు..." oninput="filterMonthlyPasses()">
 
             <!-- Passes Table -->
-            <div style="overflow-x:auto;">
-                <table class="customer-table" style="width:100%;">
+            <div>
+                <table class="customer-table" style="width:100%; table-layout:auto;">
                     <thead>
                         <tr>
-                            <th style="min-width:110px;">వాహన నంబర్</th>
-                            <th style="min-width:110px;">ఫోన్ నంబర్</th>
-                            <th style="min-width:110px;">పేరు</th>
-                            <th style="min-width:110px; text-align:center;">చెల్లింపు</th>
-                            <th style="min-width:110px;">జారీ చేసిన తేదీ</th>
-                            <th style="min-width:90px;">రోజులు మిగిలాయి</th>
-                            <th style="min-width:80px;">స్థితి</th>
-                            <th style="min-width:130px;">చర్యలు</th>
+                            <th style="min-width:90px;">వాహన నంబర్</th>
+                            <th style="min-width:90px;">ఫోన్ నంబర్</th>
+                            <th style="min-width:90px;">పేరు</th>
+                            <th style="min-width:80px; text-align:center;">చెల్లింపు</th>
+                            <th style="min-width:90px;">జారీ తేదీ</th>
+                            <th style="min-width:70px; text-align:center;">రోజులు</th>
+                            <th style="min-width:70px; text-align:center;">స్థితి</th>
+                            <th style="min-width:160px;">చర్యలు</th>
                         </tr>
                     </thead>
                     <tbody id="mp-table-body">
