@@ -375,6 +375,7 @@
                             <th style="min-width:110px;">వాహన నంబర్</th>
                             <th style="min-width:110px;">ఫోన్ నంబర్</th>
                             <th style="min-width:110px;">పేరు</th>
+                            <th style="min-width:110px; text-align:center;">చెల్లింపు</th>
                             <th style="min-width:110px;">జారీ చేసిన తేదీ</th>
                             <th style="min-width:90px;">రోజులు మిగిలాయి</th>
                             <th style="min-width:80px;">స్థితి</th>
@@ -382,7 +383,7 @@
                         </tr>
                     </thead>
                     <tbody id="mp-table-body">
-                        <tr><td colspan="7" style="text-align:center; padding:30px; color:#94a3b8;">లోడ్ అవుతోంది...</td></tr>
+                        <tr><td colspan="8" style="text-align:center; padding:30px; color:#94a3b8;">లోడ్ అవుతోంది...</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -517,6 +518,13 @@
                         <option value="4">🛺 ఆటో</option>
                         <option value="5">🚗 కారు</option>
                     </select>
+                </div>
+                <div class="form-group" style="margin-bottom:8px;">
+                    <button id="btn-save-vehicle-type" onclick="saveVehicleTypeOnly()"
+                        style="display:none; width:100%; padding:8px; background:#f59e0b; color:white;
+                               border:none; border-radius:6px; font-weight:bold; cursor:pointer; font-size:13px;">
+                        💾 వాహన రకం సేవ్ చేయి (చెక్-అవుట్ లేకుండా)
+                    </button>
                 </div>
                 <div class="form-group" style="margin-bottom:0;">
                     <label style="font-size:12px; color:#92400e;">అడ్మిన్ డిస్కౌంట్ (₹ తగ్గించు)</label>
@@ -1447,6 +1455,7 @@
                 if (_isAdmin) {
                     document.getElementById('admin-vehicle-type-fix').value = '';
                     document.getElementById('admin-discount-amount').value = '';
+                    document.getElementById('btn-save-vehicle-type').style.display = 'none';
                 }
                 
                 if(currentActiveSpot.hasPass) {
@@ -1864,6 +1873,27 @@
             if (!sel || !sel.value || !currentActiveSpot) return;
             currentActiveSpot.type = sel.value;
             updateLiveCheckoutStats();
+            // Show the Save Type button so admin can persist without doing checkout
+            document.getElementById('btn-save-vehicle-type').style.display = 'inline-block';
+        }
+
+        function saveVehicleTypeOnly() {
+            const sel = document.getElementById('admin-vehicle-type-fix');
+            if (!sel || !sel.value || !currentActiveSpot) return;
+            const newType = sel.value;
+            const typeLabels = {"2":"🚲 సైకిల్","3":"🏍️ బైక్","4":"🛺 ఆటో","5":"🚗 కారు"};
+            const spotIdx = currentActiveSpot.id - 1;
+            currentActiveSpot.type = newType;
+            // Write only the type field to Firebase — spot stays occupied
+            const ref = db.ref('/spots/' + spotIdx + '/type');
+            (isTester ? Promise.resolve() : ref.set(newType))
+                .then(() => {
+                    showToast('వాహన రకం సేవ్ చేయబడింది: ' + (typeLabels[newType] || newType) + ' ✅');
+                    document.getElementById('btn-save-vehicle-type').style.display = 'none';
+                    sel.value = '';
+                    updateLiveCheckoutStats(); // recalculate fee with saved type
+                })
+                .catch(e => alert('సేవ్ ఎర్రర్: ' + e.message));
         }
 
         function updateLiveCheckoutStats() {
@@ -1875,14 +1905,16 @@
             const h = Math.floor(elapsedSeconds / 3600); const m = Math.floor((elapsedSeconds % 3600) / 60); const s = elapsedSeconds % 60;
             document.getElementById('info-time').innerText = `${h}h ${m}m ${s}s`;
             
-            const segmentRate = parseFloat(systemSettings.rates[currentActiveSpot.type]) || 0;
+            // Coerce type to string — Firebase may return integer if stored that way
+            const vehicleType = String(currentActiveSpot.type || '3');
+            const segmentRate = parseFloat(systemSettings.rates[vehicleType]) || 0;
             let rawFee = 0;
 
-            if (currentActiveSpot.type === "2") { 
+            if (vehicleType === "2") { 
                 // Cycle: 24hr blocks
                 let blocks = Math.max(1, Math.ceil(elapsedSeconds / (24 * 3600)));
                 rawFee = segmentRate * blocks;
-            } else if (currentActiveSpot.type === "3") {
+            } else if (vehicleType === "3") {
                 // Bike: Day slot 06:00–22:00 = ₹15, Night slot 22:00–06:00 = ₹15.
                 // Count how many slot boundaries the bike crosses between entryTime and now.
                 // Each crossed boundary = one additional ₹15 charge. Minimum 1 slot = ₹15.
@@ -1896,7 +1928,9 @@
                     //   10pm → 5:59am   stays in night          → 1 slot  = ₹15
                     //   8pm  → 6:30am   crosses 22:00 & 06:00   → 3 slots = ₹45
                     const RATE = segmentRate;
-                    const entryMs = currentActiveSpot.entryTime || (Date.now() - elapsedSeconds * 1000);
+                    const entryMs = currentActiveSpot.entryTime
+                        ? parseInt(currentActiveSpot.entryTime)
+                        : (Date.now() - elapsedSeconds * 1000);
                     const exitMs  = Date.now();
 
                     function slotIndex(ms) {
@@ -1911,10 +1945,13 @@
                     const slotsCrossed = Math.max(1, slotIndex(exitMs) - slotIndex(entryMs) + 1);
                     rawFee = RATE * slotsCrossed;
                 })();
-            } else { 
+            } else if (vehicleType === "4" || vehicleType === "5") {
                 // Auto, Car: 12hr blocks
                 let blocks = Math.max(1, Math.ceil(elapsedSeconds / (12 * 3600)));
                 rawFee = segmentRate * blocks;
+            } else {
+                // Unknown type — default to 12hr bike slot logic as fallback
+                rawFee = segmentRate || 15;
             }
 
             appliedDiscountAmount = 0;
@@ -2644,7 +2681,7 @@
 
         function refreshMonthlyPasses() {
             const tbody = document.getElementById('mp-table-body');
-            tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:20px;color:#94a3b8;">Firebase నుండి లోడ్ అవుతోంది...</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:20px;color:#94a3b8;">Firebase నుండి లోడ్ అవుతోంది...</td></tr>';
             db.ref('/monthlyPasses').once('value').then(snap => {
                 monthlyPasses = snap.exists() ? (snap.val() || {}) : {};
                 renderMonthlyPassesTable();
@@ -2689,7 +2726,7 @@
             document.getElementById('mp-expired-count').innerText = expiredCount;
 
             if (all.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:30px;color:#94a3b8;">' +
+                tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:30px;color:#94a3b8;">' +
                     (search ? 'వెతుకు ఫలితాలు లేవు.' : 'ఇంకా మంత్లీ పాసులు లేవు. "కొత్త పాస్" బటన్ నొక్కి కొత్తది క్రియేట్ చేయండి.') +
                     '</td></tr>';
                 return;
@@ -2722,6 +2759,19 @@
                     <td style="padding:10px; font-weight:bold;">${escapeHTML(p.vehicle || '--')}</td>
                     <td style="padding:10px;">${escapeHTML(p.phone)}</td>
                     <td style="padding:10px;">${escapeHTML(p.name || '--')}</td>
+                    <td style="padding:10px; text-align:center;">
+                        ${(currentShift.role === 'admin' || currentShift.role === 'tester') ? `
+                            <button onclick="togglePassPaid('${escapeHTML(p.phone)}')"
+                                style="padding:5px 14px; border-radius:20px; border:2px solid ${isPassPaidThisMonth(p) ? '#16a34a' : '#dc2626'};
+                                       background:${isPassPaidThisMonth(p) ? '#dcfce7' : '#fee2e2'};
+                                       color:${isPassPaidThisMonth(p) ? '#16a34a' : '#dc2626'};
+                                       font-weight:bold; font-size:12px; cursor:pointer; white-space:nowrap;">
+                                ${isPassPaidThisMonth(p) ? '✅ చెల్లించారు' : '❌ చెల్లించలేదు'}
+                            </button>` :
+                            `<span style="font-size:12px; font-weight:bold; color:${isPassPaidThisMonth(p) ? '#16a34a' : '#dc2626'};">
+                                ${isPassPaidThisMonth(p) ? '✅ చెల్లించారు' : '❌ చెల్లించలేదు'}
+                            </span>`}
+                    </td>
                     <td style="padding:10px; font-size:13px;">${issuedStr}</td>
                     <td style="padding:10px;">${daysCell}</td>
                     <td style="padding:10px;">${statusBadge}</td>
@@ -2741,6 +2791,37 @@
 
         function filterMonthlyPasses() {
             renderMonthlyPassesTable();
+        }
+
+        function currentMonthKey() {
+            const d = new Date();
+            return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+        }
+
+        function isPassPaidThisMonth(p) {
+            return !!(p.paidMonths && p.paidMonths[currentMonthKey()]);
+        }
+
+        function togglePassPaid(phone) {
+            if (currentShift.role !== 'admin' && currentShift.role !== 'tester') return;
+            const p = monthlyPasses[phone];
+            if (!p) return;
+            const key = currentMonthKey();
+            const newVal = !(p.paidMonths && p.paidMonths[key]);
+            if (!p.paidMonths) p.paidMonths = {};
+            p.paidMonths[key] = newVal;
+            // Write only this month's key — all other months preserved in Firebase
+            const writeRef = isTester
+                ? Promise.resolve()
+                : db.ref('/monthlyPasses/' + phone + '/paidMonths/' + key).set(newVal);
+            writeRef
+                .then(() => {
+                    renderMonthlyPassesTable();
+                    showToast(newVal
+                        ? p.name + ' — ' + key + ' చెల్లింపు నిర్ధారించబడింది ✅'
+                        : p.name + ' — ' + key + ' చెల్లించలేదు ⬜', newVal);
+                })
+                .catch(e => alert('Error: ' + e.message));
         }
 
         function printMonthlyPass(phone) {
@@ -2838,15 +2919,23 @@
         function renewMonthlyPass(phone) {
             const p = monthlyPasses[phone];
             if (!p) return;
-            // Renewal = set issueDate to today (1st of month if already past 1st, else today)
-            // Per requirement: renewal on the 1st of every month.
-            // When admin clicks Renew, set issueDate = today so expiry = 1st of next month.
-            if (!confirm(`${p.name || phone} పాస్‌ను రిన్యూ చేయాలా?
-కొత్త గడువు: నెల 1వ తేదీ వరకు`)) return;
-            monthlyPasses[phone].issueDate = Date.now();
+            const daysLeft = getDaysLeft(p.issueDate || Date.now());
+            // FIX: renewal always issues from 1st of NEXT month so renewing
+            // mid-month gives a full month (e.g. Jun 28 → Jul 1 to Aug 1)
+            const today = new Date();
+            const nextMonthStart = new Date(today.getFullYear(), today.getMonth() + 1, 1, 0, 0, 0, 0).getTime();
+            const nextMonthLabel = new Date(nextMonthStart).toLocaleDateString('te-IN', {month:'long', year:'numeric'});
+            const confirmMsg = daysLeft > 0
+                ? `${p.name || phone} పాస్ రిన్యూ చేయాలా?
+ప్రస్తుత పాస్ ${daysLeft} రోజులు మిగిలింది.
+కొత్త పాస్ ${nextMonthLabel} నుండి మొదలవుతుంది.`
+                : `${p.name || phone} పాస్ రిన్యూ చేయాలా?
+కొత్త పాస్ ${nextMonthLabel} నుండి మొదలవుతుంది.`;
+            if (!confirm(confirmMsg)) return;
+            monthlyPasses[phone].issueDate = nextMonthStart;
             if (!isTester) {
-                db.ref('/monthlyPasses/' + phone + '/issueDate').set(Date.now())
-                    .then(() => showToast('పాస్ రిన్యూ అయింది! 🔄'))
+                db.ref('/monthlyPasses/' + phone + '/issueDate').set(nextMonthStart)
+                    .then(() => showToast('పాస్ రిన్యూ అయింది! ' + nextMonthLabel + ' నుండి 🔄'))
                     .catch(e => showToast('రిన్యూ ఎర్రర్: ' + e.message));
             } else {
                 showToast('పాస్ రిన్యూ అయింది (టెస్ట్ మోడ్)! 🔄');
@@ -2980,6 +3069,30 @@
         window.addEventListener('beforeunload', () => {
             if (!autoSaveFired) autoSaveShiftOnClose();
         });
+
+        // ── ONE-TIME FIX: slot 62 → type='3' (Bike), entryTime = 1hr 15min ago ──
+        // Runs once after Firebase connects. Uses localStorage to prevent re-running.
+        (function fixSlot62() {
+            const FIX_KEY = 'slot62_bike_fix_v1';
+            if (localStorage.getItem(FIX_KEY)) return;
+            db.ref('/spots/61').once('value').then(snap => {
+                const spot = snap.val();
+                if (!spot || !spot.isOccupied) {
+                    console.log('Slot 62 fix: not occupied, skipping.');
+                    return;
+                }
+                if (spot._bikeFix) { localStorage.setItem(FIX_KEY, '1'); return; }
+                const entryTime = Date.now() - (1 * 3600000 + 15 * 60000);
+                const updated   = Object.assign({}, spot, { id:62, type:'3', entryTime, _bikeFix:true });
+                db.ref('/spots/61').set(updated).then(() => {
+                    localStorage.setItem(FIX_KEY, '1');
+                    if (typeof showToast === 'function')
+                        showToast('స్పాట్ 62: బైక్‌గా సేవ్ చేయబడింది ✅ రుసుము ₹15 అవుతుంది');
+                    console.log('✅ Slot 62 fixed → type=3 (Bike), entryTime=1hr15min ago');
+                }).catch(e => console.warn('Slot 62 fix write failed:', e));
+            }).catch(e => console.warn('Slot 62 fix read failed:', e));
+        })();
+        // ─────────────────────────────────────────────────────────────────────────
 
     </script>
 </body>
