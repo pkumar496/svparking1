@@ -1195,14 +1195,15 @@
             const seenLoginTimes = new Set();
 
             if (currentShift && currentShift.active && currentShift.role !== 'tester') {
-                const lt = currentShift.loginTime;
-                if (lt && lt >= todayStart && lt <= todayEnd) {
-                    seenLoginTimes.add(getShiftKey(currentShift));
-                    tHandled += (currentShift.handled || 0);
-                    tCash    += parseFloat(currentShift.cash || 0);
-                    tOnline  += parseFloat(currentShift.online || 0);
-                    tPass    += parseFloat(currentShift.passUsage || 0);
-                }
+                // FIX: always count active shift regardless of loginTime.
+                // Overnight operators log in before midnight but collect revenue today.
+                // Gating on loginTime caused revenue to be invisible until logout
+                // then appear suddenly as a spike — the post-midnight "inflation".
+                seenLoginTimes.add(getShiftKey(currentShift));
+                tHandled += (currentShift.handled || 0);
+                tCash    += parseFloat(currentShift.cash || 0);
+                tOnline  += parseFloat(currentShift.online || 0);
+                tPass    += parseFloat(currentShift.passUsage || 0);
             }
 
             // ZOMBIE FIX: track seen usernames so any zombie session for the same
@@ -1215,8 +1216,7 @@
                 Object.values(activeSessions).forEach(session => {
                     if (!session || session.role === 'tester') return;
                     if (seenUsernames.has(session.username)) return; // skip zombie or duplicate
-                    const lt = session.loginTime;
-                    if (!lt || lt < todayStart || lt > todayEnd) return;
+                    // FIX: count active sessions regardless of loginTime (overnight operators)
                     if (seenLoginTimes.has(getShiftKey(session))) return;
                     seenLoginTimes.add(getShiftKey(session));
                     seenUsernames.add(session.username);
@@ -1235,11 +1235,14 @@
                 if (!shift) return;
                 const lt = shift.loginTime;
                 const lo = shift.logoutTime;
-                const refTime = (lo && lo >= todayStart && lo <= todayEnd) ? lo : lt;
-                if (!refTime || refTime < todayStart || refTime > todayEnd) return;
+                const refTime = (lo && lo >= todayStart && lo <= todayEnd) ? lo
+                              : (lt && lt >= todayStart && lt <= todayEnd) ? lt
+                              : null;
+                if (!refTime) return;
                 if (seenLoginTimes.has(getShiftKey(shift))) return;
-                // AUTOSAVE DEDUP: if a clean shift for this username is already counted, skip the autoSaved copy
-                if (shift.autoSaved && seenUsernames.has(shift.username)) return;
+                // seenUsernames blocks history entry if operator still active (counted above)
+                // prevents double count for overnight shifts in both activeSessions + shiftHistory
+                if (seenUsernames.has(shift.username)) return;
                 seenLoginTimes.add(getShiftKey(shift));
                 seenUsernames.add(shift.username);
                 tHandled += (shift.handled || 0);
