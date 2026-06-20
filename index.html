@@ -890,6 +890,7 @@
                 } catch (networkErr) {
                     console.warn('Firebase unreachable; restoring from local cache.', networkErr);
                     currentShift = parsed;
+                    restoredOffline = true; // FIX Bug 1: Mark so the activeSessions ping is suppressed
                 }
                 saveSessionLocally();
             } catch (e) {
@@ -1128,7 +1129,12 @@
             }).catch(e => console.error("Cloud push error:", e));
 
             if(currentShift && currentShift.active && currentShift.role !== 'tester') {
-                db.ref('/activeSessions/' + currentShift.username).set(currentShift).catch(e => console.error(e));
+                // FIX Bug 1: Don't re-push to activeSessions if we restored offline —
+                // the operator may have already logged out cleanly and pushing here would
+                // resurrect a zombie session and double-count revenue.
+                if (!restoredOffline) {
+                    db.ref('/activeSessions/' + currentShift.username).set(currentShift).catch(e => console.error(e));
+                }
             }
         }
 
@@ -1382,6 +1388,7 @@
             // clean record is processed first and the autoSaved duplicate is skipped.
             historyArray = [...historyArray].sort((a, b) => (a&&a.autoSaved?1:0) - (b&&b.autoSaved?1:0));
             const processedShiftKeys = new Set();
+            const processedUsernames = new Set(); // FIX Bug 3: dedup by username, not loginTime
             historyArray.forEach(shift => {
                 if (!shift) return;
                 if (shift.role === 'tester') return;
@@ -1396,11 +1403,25 @@
                 if (activeShiftKeys.has(shiftKey)) {
                     return;
                 }
+                // FIX Bug 2: Skip autoSaved entries if the same operator is still live in activeSessions.
+                // Covers the case where autoSave push completed but activeSessions write didn't —
+                // loginTime may differ by ms so the key check above misses it.
+                if (shift.autoSaved && activeSessions && activeSessions[shift.username]) {
+                    return;
+                }
                 // Skip duplicate shiftKey (autoSaved duplicate)
                 if (processedShiftKeys.has(shiftKey)) {
                     return;
                 }
+                // FIX Bug 3: Also dedup by username — multi-tab loginTime divergence (even 1ms)
+                // creates two different shiftKeys for the same operator session, both passing
+                // the key check. Username dedup catches this. historyArray is sorted clean-first
+                // so the clean logout record wins over any autoSaved duplicate.
+                if (processedUsernames.has(shift.username)) {
+                    return;
+                }
                 processedShiftKeys.add(shiftKey);
+                processedUsernames.add(shift.username);
                 tHandled += shift.handled || 0;
                 tCash    += parseFloat(shift.cash || 0);
                 tOnline  += parseFloat(shift.online || 0);
@@ -2437,6 +2458,7 @@
             if (user === 'test' && pass === '143') {
                 isTester = true;
                 autoSaveFired = false;
+                restoredOffline = false; // FIX Bug 1: Clear offline flag on tester login
                 currentShift = { active: true, username: "test", name: "Tester", role: "tester", loginTime: Date.now(), handled: 0, cash: 0, online: 0, passUsage: 0 };
                 saveSessionLocally();
                 closeModals();
@@ -2450,6 +2472,7 @@
                 currentShift = { active: true, username: user, name: systemSettings.users[user].name, role: systemSettings.users[user].role, loginTime: Date.now(), handled: 0, cash: 0, online: 0, passUsage: 0 };
                 
                 autoSaveFired = false; // New session — allow auto-save to fire if browser is closed
+                restoredOffline = false; // FIX Bug 1: Clear offline flag — this is a fresh authenticated login
                 saveSessionLocally();
                 
                 if (currentShift.role !== 'tester') {
@@ -3275,6 +3298,7 @@
         // ============================================================
 
         let autoSaveFired = false;
+        let restoredOffline = false; // FIX Bug 1: Set when session is restored while Firebase unreachable
 
         async function autoSaveShiftOnClose() {
             if (autoSaveFired) return;
