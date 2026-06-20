@@ -828,7 +828,8 @@
         let passes = {}; 
         let customerDB = {}; 
         let isTester = false;
-        let todayRevenueOverride = null; // Admin-set manual override for today's displayed total (₹)
+        let todayRevenueOverride = null; // Admin-set manual override for today displayed total
+        let todayRevenueOverrideDate = null; // Date string when override was set — auto-clears at midnight
         
         let currentShift = { active: false, username: "", name: "", role: "", loginTime: null, logoutTime: null, handled: 0, cash: 0, online: 0, passUsage: 0 };
         let logoutInProgress = false; // FIX Bug 2: Prevent double-logout double-push
@@ -848,6 +849,11 @@
 
                 if (todayStr !== shiftStr) {
                     clearLocalSession();
+                    // FIX Bug B: Remove stale activeSessions entry from Firebase so it does not
+                    // ghost on the admin dashboard or double-count into today's revenue totals.
+                    if (parsed.username) {
+                        try { db.ref(`/activeSessions/${parsed.username}`).remove(); } catch(e) {}
+                    }
                     return;
                 }
 
@@ -1328,6 +1334,11 @@
             if (activeSessions) {
                 Object.values(activeSessions).forEach(session => {
                     if (!session || session.role === 'tester') return;
+                    // FIX Bug B: Skip stale sessions from a previous day (ghost entries left behind
+                    // when browser was closed before midnight and re-opened after midnight).
+                    const _sessionDate = getLocalDateString(new Date(session.loginTime || Date.now()));
+                    const _todayDate   = getLocalDateString(new Date());
+                    if (_sessionDate !== _todayDate) return;
                     const key = getShiftKey(session);
                     activeShiftKeys.add(key);
                     if (!activeAgg[session.username]) {
@@ -1455,6 +1466,11 @@
 
         function updateLiveAdminDashboard() {
             const dash = document.getElementById('main-admin-dashboard');
+            // FIX Bug A: Auto-clear todayRevenueOverride if it was set on a previous day
+            if (todayRevenueOverride !== null && todayRevenueOverrideDate !== getLocalDateString(new Date())) {
+                todayRevenueOverride = null;
+                todayRevenueOverrideDate = null;
+            }
             if (!currentShift || !currentShift.active || (currentShift.role !== "admin" && currentShift.role !== "tester")) {
                 dash.style.display = 'none';
                 return;
@@ -1504,6 +1520,8 @@
             if (activeSessions) {
                 for (const [uname, session] of Object.entries(activeSessions)) {
                     if(!session || session.role === 'tester') continue;
+                    // FIX Bug B: Hide ghost chips from stale sessions of a previous day
+                    if (getLocalDateString(new Date(session.loginTime || Date.now())) !== getLocalDateString(new Date())) continue;
                     hasActiveUsers = true;
                     let loginTimeStr = session.loginTime ? new Date(session.loginTime).toLocaleTimeString('te-IN', {hour: '2-digit', minute:'2-digit'}) : '--';
                     userListDiv.innerHTML += `
@@ -2391,6 +2409,7 @@
             const val = parseFloat(document.getElementById('dash-revenue-override-input').value);
             if (isNaN(val) || val < 0) { showToast('దయచేసి సరైన మొత్తం నమోదు చేయండి.', false); return; }
             todayRevenueOverride = val;
+            todayRevenueOverrideDate = getLocalDateString(new Date()); // Track which day this override belongs to
             updateLiveAdminDashboard();
             showToast('✅ ఈ రోజు మొత్తం ₹' + val.toFixed(0) + ' గా సెట్ చేయబడింది (మాన్యువల్ ఓవర్‌రైడ్).');
         }
@@ -2405,6 +2424,7 @@
 
         // Initialize today's revenue display to ₹1875 on page load (admin override)
         todayRevenueOverride = 1875;
+        todayRevenueOverrideDate = getLocalDateString(new Date()); // Auto-clears if dashboard stays open past midnight
 
         function adminDirectLogout() {
             executeSecureLogout(true);
