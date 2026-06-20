@@ -248,66 +248,76 @@
         </div>
 
         <div class="live-admin-dashboard admin-only" id="main-admin-dashboard">
+            <!-- Header row -->
             <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.2); padding-bottom: 10px;">
                 <h3 style="margin: 0; font-size: 18px;">🔴 లైవ్ సిస్టమ్ మానిటరింగ్</h3>
-                <span style="font-size: 12px; background: rgba(255,255,255,0.1); padding: 4px 8px; border-radius: 4px;" id="dash-date">--</span>
+                <div style="display:flex; gap:8px; align-items:center;">
+                    <span style="font-size: 12px; background: rgba(255,255,255,0.1); padding: 4px 8px; border-radius: 4px;" id="dash-date">--</span>
+                    <button onclick="refreshDashboardFromFirebase()" id="dash-refresh-btn"
+                        style="padding: 5px 10px; background: rgba(52,211,153,0.2); border: 1px solid rgba(52,211,153,0.4); color: #34d399; border-radius: 6px; cursor: pointer; font-size: 11px; font-weight: bold;">
+                        🔄 రీఫ్రెష్
+                    </button>
+                </div>
             </div>
-            
-            <div style="margin-top: 15px;">
+
+            <!-- Active operators -->
+            <div style="margin-top: 12px;">
                 <span style="font-size: 12px; color: #cbd5e1;">యాక్టివ్ ఆపరేటర్లు:</span>
                 <div class="active-users-list" id="dash-active-users">
                     <span style="font-size: 13px; color: #94a3b8;">ఎవరూ లేరు</span>
                 </div>
             </div>
 
-            <div class="dashboard-grid">
-                <div class="dash-card">
-                    <h4>వాహనాల లెక్కలు (ఈరోజు)</h4>
-                    <div style="display:flex; justify-content: space-between; align-items: flex-end;">
-                        <div>
-                            <p class="dash-val" style="color: var(--open-color);" id="dash-total-entered">0</p>
-                            <span style="font-size: 11px; color:#94a3b8;">మొత్తం వచ్చాయి</span>
+            <!-- ══ TODAY ══ -->
+            <div style="margin-top:16px; border-top:1px solid rgba(255,255,255,0.15); padding-top:12px;">
+                <div style="font-size:13px; font-weight:bold; color:#a7f3d0; margin-bottom:10px; letter-spacing:0.5px;">
+                    📅 ఈ రోజు — <span id="dash-today-label"></span>
+                </div>
+                <div class="dashboard-grid" style="grid-template-columns: repeat(auto-fit, minmax(160px,1fr)); gap:10px;">
+                    <!-- vehicles today -->
+                    <div class="dash-card">
+                        <h4>వాహనాల లెక్కలు</h4>
+                        <div style="display:flex; justify-content:space-between; align-items:flex-end;">
+                            <div>
+                                <p class="dash-val" style="color:var(--open-color); font-size:26px;" id="dash-total-entered">0</p>
+                                <span style="font-size:10px; color:#94a3b8;">మొత్తం వచ్చాయి</span>
+                            </div>
+                            <div style="text-align:right;">
+                                <p class="dash-val" style="color:var(--whatsapp-color); font-size:20px;" id="dash-total-left">0</p>
+                                <span style="font-size:10px; color:#94a3b8;">వెళ్లాయి</span>
+                            </div>
                         </div>
-                        <div style="text-align: right;">
-                            <p class="dash-val" style="color: var(--whatsapp-color); font-size: 20px;" id="dash-total-left">0</p>
-                            <span style="font-size: 11px; color:#94a3b8;">మొత్తం వెళ్లాయి</span>
+                        <div class="dash-sub" style="margin-top:6px;">
+                            <span>ఇప్పుడు లోపల:</span>
+                            <strong style="color:white; font-size:14px;" id="dash-in-lot">0</strong>
                         </div>
                     </div>
-                    <div class="dash-sub">
-                        <span>ప్రస్తుతం పార్కింగ్‌లో ఉన్నాయి:</span>
-                        <strong style="color: white; font-size: 14px;" id="dash-in-lot">0</strong>
+                    <!-- revenue breakdown today -->
+                    <div class="dash-card">
+                        <h4>ఆదాయం (<span class="dash-today-label-inline"></span>)</h4>
+                        <div class="dash-sub" style="margin-top:0; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:4px; margin-bottom:4px;">
+                            <span>నగదు:</span>
+                            <strong style="color:#fca5a5;" id="dash-cash">₹0.00</strong>
+                        </div>
+                        <div class="dash-sub" style="margin-top:0; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:4px; margin-bottom:4px;">
+                            <span>ఆన్‌లైన్:</span>
+                            <strong style="color:var(--accent-color);" id="dash-online">₹0.00</strong>
+                        </div>
+                        <div class="dash-sub" style="margin-top:0; color:var(--shift-color);">
+                            <span>పాస్:</span>
+                            <strong id="dash-pass">₹0.00</strong>
+                        </div>
+                    </div>
+                    <!-- total today -->
+                    <div class="dash-card" style="background:rgba(16,185,129,0.15); border-color:rgba(16,185,129,0.3);">
+                        <h4 style="color:#a7f3d0;"><span class="dash-today-label-inline"></span> మొత్తం</h4>
+                        <p class="dash-val" style="color:#34d399; font-size:30px;" id="dash-grand-total">₹0</p>
+                        <span style="font-size:10px; color:#94a3b8; display:block; margin-top:4px;">(నగదు + ఆన్‌లైన్)</span>
+                        <span style="font-size:10px; color:#64748b; display:block; margin-top:3px;" id="dash-last-updated">--</span>
                     </div>
                 </div>
-
-                <div class="dash-card">
-                    <h4>ఆదాయం (ఈరోజు సబ్‌టోటల్స్)</h4>
-                    <div class="dash-sub" style="margin-top: 0; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 5px; margin-bottom: 5px;">
-                        <span>నగదు (Cash):</span>
-                        <strong style="color: var(--occupied-color);" id="dash-cash">₹0.00</strong>
-                    </div>
-                    <div class="dash-sub" style="margin-top: 0;">
-                        <span>ఆన్‌లైన్ (UPI):</span>
-                        <strong style="color: var(--accent-color);" id="dash-online">₹0.00</strong>
-                    </div>
-                    <div class="dash-sub" style="margin-top: 8px; color: var(--shift-color);">
-                        <span>పాస్ ద్వారా వాడినది:</span>
-                        <strong id="dash-pass">₹0.00</strong>
-                    </div>
-                </div>
-
-                <div class="dash-card" style="background: rgba(16, 185, 129, 0.15); border-color: rgba(16, 185, 129, 0.3);">
-                    <h4 style="color: #a7f3d0;">ఈరోజు మొత్తం కలెక్షన్</h4>
-                    <p class="dash-val" style="color: #34d399; font-size: 34px;" id="dash-grand-total">₹0</p>
-                    <span style="font-size: 11px; color:#94a3b8; display: block; margin-top: 5px;">(నగదు + ఆన్‌లైన్ మాత్రమే)</span>
-                    <span style="font-size: 10px; color:#64748b; display: block; margin-top: 4px;" id="dash-last-updated">--</span>
-                    <button onclick="refreshDashboardFromFirebase()" id="dash-refresh-btn"
-                        style="margin-top: 10px; width: 100%; padding: 7px; background: rgba(52,211,153,0.2); border: 1px solid rgba(52,211,153,0.4); color: #34d399; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: bold;">
-                        🔄 Firebase నుండి రీఫ్రెష్
-                    </button>
-                </div>
-
-
             </div>
+
         </div>
 
         <div class="stats-container">
@@ -324,8 +334,8 @@
     <div class="modal-overlay no-print" id="login-modal">
         <div class="modal-box">
             <h2>లాగిన్ అవ్వండి</h2>
-            <div class="form-group"><label>యూజర్ నేమ్</label><input type="text" id="login-user" autocomplete="off"></div>
-            <div class="form-group"><label>పాస్‌వర్డ్</label><input type="password" id="login-pass"></div>
+            <div class="form-group"><label>యూజర్ నేమ్</label><input type="text" id="login-user" autocomplete="off" onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('login-pass').focus();}"></div>
+            <div class="form-group"><label>పాస్‌వర్డ్</label><input type="password" id="login-pass" onkeydown="if(event.key==='Enter'){event.preventDefault();attemptLogin();}"></div>
             <button class="btn btn-shift" onclick="attemptLogin()">లాగిన్</button>
             <button class="btn btn-gray" onclick="closeModals()">రద్దు చేయి</button>
         </div>
@@ -618,6 +628,55 @@
                 </div>
             </div>
 
+            <div class="admin-section" style="background:#f0fdf4; border-color:#86efac;">
+                <h3 style="color:#15803d;">🔧 Firebase డేటా పునరుద్ధరణ (Data Restore)</h3>
+                <p style="font-size:12px; color:#555; margin-top:0;">Firebase wipe అయినప్పుడు shift history మళ్ళీ నమోదు చేయడానికి ఉపయోగించండి. ఒక్కొక్క రోజుకు/షిఫ్ట్‌కు ఒక్కో entry జోడించండి.</p>
+                <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                    <div class="form-group" style="flex:1; min-width:110px; margin-bottom:8px;">
+                        <label style="font-size:12px;">ఆపరేటర్ పేరు</label>
+                        <input type="text" id="rst-name" placeholder="ఉదా: Ramesh">
+                    </div>
+                    <div class="form-group" style="flex:1; min-width:110px; margin-bottom:8px;">
+                        <label style="font-size:12px;">Username</label>
+                        <input type="text" id="rst-username" placeholder="ఉదా: ramesh">
+                    </div>
+                </div>
+                <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                    <div class="form-group" style="flex:1; min-width:110px; margin-bottom:8px;">
+                        <label style="font-size:12px;">తేదీ (Date)</label>
+                        <input type="date" id="rst-date">
+                    </div>
+                    <div class="form-group" style="flex:1; min-width:80px; margin-bottom:8px;">
+                        <label style="font-size:12px;">Login సమయం</label>
+                        <input type="time" id="rst-login-time" value="08:00">
+                    </div>
+                    <div class="form-group" style="flex:1; min-width:80px; margin-bottom:8px;">
+                        <label style="font-size:12px;">Logout సమయం</label>
+                        <input type="time" id="rst-logout-time" value="20:00">
+                    </div>
+                </div>
+                <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                    <div class="form-group" style="flex:1; min-width:80px; margin-bottom:8px;">
+                        <label style="font-size:12px;">వాహనాలు</label>
+                        <input type="number" id="rst-handled" placeholder="0" min="0" step="1">
+                    </div>
+                    <div class="form-group" style="flex:1; min-width:80px; margin-bottom:8px;">
+                        <label style="font-size:12px;">నగదు (₹)</label>
+                        <input type="number" id="rst-cash" placeholder="0" min="0" step="0.01">
+                    </div>
+                    <div class="form-group" style="flex:1; min-width:80px; margin-bottom:8px;">
+                        <label style="font-size:12px;">ఆన్‌లైన్ (₹)</label>
+                        <input type="number" id="rst-online" placeholder="0" min="0" step="0.01">
+                    </div>
+                    <div class="form-group" style="flex:1; min-width:80px; margin-bottom:8px;">
+                        <label style="font-size:12px;">పాస్ (₹)</label>
+                        <input type="number" id="rst-pass" placeholder="0" min="0" step="0.01">
+                    </div>
+                </div>
+                <div id="rst-status" style="font-size:12px; margin-bottom:8px; display:none;"></div>
+                <button class="btn btn-green" style="margin-top:0;" onclick="restoreShiftEntry()">➕ Firebase కి Shift Entry జోడించు</button>
+            </div>
+
             <div class="admin-section">
                 <h3>💰 పార్కింగ్ ధరల సెట్టింగ్స్</h3>
                 <p style="font-size:12px; color:#555; margin-top:0;">
@@ -768,7 +827,8 @@
         let activeSessions = {}; 
         let passes = {}; 
         let customerDB = {}; 
-        let isTester = false; 
+        let isTester = false;
+        let todayRevenueOverride = null; // Admin-set manual override for today's displayed total (₹)
         
         let currentShift = { active: false, username: "", name: "", role: "", loginTime: null, logoutTime: null, handled: 0, cash: 0, online: 0, passUsage: 0 };
         let logoutInProgress = false; // FIX Bug 2: Prevent double-logout double-push
@@ -811,7 +871,10 @@
                 try {
                     const activeSnap = await db.ref('/activeSessions/' + parsed.username).once('value');
                     if (activeSnap.exists()) {
-                        currentShift = parsed;
+                        // Prefer server session to avoid duplicates from multiple tabs
+                        currentShift = activeSnap.val();
+                        // Ensure it's marked active
+                        currentShift.active = true;
                     } else {
                         // Server record missing. Could be a network drop OR a real logout.
                         // Prioritize restoring local session if it's today's date.
@@ -822,6 +885,7 @@
                     console.warn('Firebase unreachable; restoring from local cache.', networkErr);
                     currentShift = parsed;
                 }
+                saveSessionLocally();
             } catch (e) {
                 clearLocalSession();
             }
@@ -1091,7 +1155,72 @@
             }
         }
 
-        function clearRevenueHistory() {
+
+
+        
+        // ── Firebase Data Restore: re-enter wiped shift history ────────────
+        async function restoreShiftEntry() {
+            if (currentShift.role !== 'admin') return alert('అడ్మిన్ మాత్రమే.');
+            const name     = document.getElementById('rst-name').value.trim();
+            const username = document.getElementById('rst-username').value.trim().toLowerCase();
+            const dateVal  = document.getElementById('rst-date').value;       // YYYY-MM-DD
+            const loginT   = document.getElementById('rst-login-time').value; // HH:MM
+            const logoutT  = document.getElementById('rst-logout-time').value;
+            const handled  = parseInt(document.getElementById('rst-handled').value)   || 0;
+            const cash     = parseFloat(document.getElementById('rst-cash').value)    || 0;
+            const online   = parseFloat(document.getElementById('rst-online').value)  || 0;
+            const passU    = parseFloat(document.getElementById('rst-pass').value)    || 0;
+
+            if (!name || !dateVal) return alert('పేరు మరియు తేదీ తప్పనిసరి.');
+
+            const statusEl = document.getElementById('rst-status');
+            statusEl.style.display = 'block';
+            statusEl.style.color = '#555';
+            statusEl.innerText = '⏳ Firebase కి సేవ్ చేస్తోంది...';
+
+            // Build timestamps from date + time inputs in local time
+            const [yr, mo, dy] = dateVal.split('-').map(Number);
+            const [lih, lim]   = loginT.split(':').map(Number);
+            const [loh, lom]   = logoutT.split(':').map(Number);
+            const loginTime    = new Date(yr, mo-1, dy, lih, lim, 0, 0).getTime();
+            const logoutTime   = new Date(yr, mo-1, dy, loh, lom, 0, 0).getTime();
+
+            const entry = { name, username, loginTime, logoutTime, handled, cash, online, passUsage: passU, restored: true };
+
+            try {
+                await db.ref('/shiftHistory').push(entry);
+
+                // Also bump globalStats
+                const gsSnap = await db.ref('/globalStats').once('value');
+                const gs = gsSnap.exists() ? gsSnap.val() : { totalEntered:0, totalLeft:0, totalCash:0, totalOnline:0, totalPass:0 };
+                gs.totalLeft    = (gs.totalLeft    || 0) + handled;
+                gs.totalEntered = (gs.totalEntered || 0) + handled;
+                gs.totalCash    = (gs.totalCash    || 0) + cash;
+                gs.totalOnline  = (gs.totalOnline  || 0) + online;
+                gs.totalPass    = (gs.totalPass    || 0) + passU;
+                await db.ref('/globalStats').set(gs);
+                globalStats = gs;
+
+                statusEl.style.color = '#15803d';
+                statusEl.innerText = `✅ సేవ్ చేయబడింది! ${name} | ${dateVal} | వాహనాలు:${handled} | నగదు:₹${cash} | ఆన్‌లైన్:₹${online}`;
+
+                // Clear inputs for next entry
+                document.getElementById('rst-name').value = '';
+                document.getElementById('rst-username').value = '';
+                document.getElementById('rst-handled').value = '';
+                document.getElementById('rst-cash').value = '';
+                document.getElementById('rst-online').value = '';
+                document.getElementById('rst-pass').value = '';
+
+                updateLiveAdminDashboard();
+                showToast('✅ Shift entry జోడించబడింది!');
+            } catch(e) {
+                statusEl.style.color = 'red';
+                statusEl.innerText = '❌ ఎర్రర్: ' + e.message;
+            }
+        }
+
+                function clearRevenueHistory() {
             if (currentShift.role !== 'tester' && currentShift.role !== 'admin') return;
             if (confirm("ఆదాయం మరియు పాత రిపోర్ట్ హిస్టరీ మొత్తం డిలీట్ చేయాలా?")) {
                 let freshStats = { totalEntered: 0, totalLeft: 0, totalCash: 0, totalOnline: 0, totalPass: 0 };
@@ -1192,66 +1321,136 @@
             const todayStart = new Date().setHours(0, 0, 0, 0);
             const todayEnd   = new Date().setHours(23, 59, 59, 999);
             let tHandled = 0; let tCash = 0; let tOnline = 0; let tPass = 0;
-            const seenLoginTimes = new Set();
 
-            if (currentShift && currentShift.active && currentShift.role !== 'tester') {
-                // FIX: always count active shift regardless of loginTime.
-                // Overnight operators log in before midnight but collect revenue today.
-                // Gating on loginTime caused revenue to be invisible until logout
-                // then appear suddenly as a spike — the post-midnight "inflation".
-                seenLoginTimes.add(getShiftKey(currentShift));
-                tHandled += (currentShift.handled || 0);
-                tCash    += parseFloat(currentShift.cash || 0);
-                tOnline  += parseFloat(currentShift.online || 0);
-                tPass    += parseFloat(currentShift.passUsage || 0);
-            }
-
-            // ZOMBIE FIX: track seen usernames so any zombie session for the same
-            // user (different loginTime) is also blocked, not just the current one.
-            const seenUsernames = new Set();
-            if (currentShift && currentShift.active && currentShift.username) {
-                seenUsernames.add(currentShift.username);
-            }
+            // Aggregate active sessions per username (should be at most one, but sum anyway)
+            const activeAgg = {};
+            const activeShiftKeys = new Set();
             if (activeSessions) {
                 Object.values(activeSessions).forEach(session => {
                     if (!session || session.role === 'tester') return;
-                    if (seenUsernames.has(session.username)) return; // skip zombie or duplicate
-                    // FIX: count active sessions regardless of loginTime (overnight operators)
-                    if (seenLoginTimes.has(getShiftKey(session))) return;
-                    seenLoginTimes.add(getShiftKey(session));
-                    seenUsernames.add(session.username);
-                    tHandled += (session.handled || 0);
-                    tCash    += parseFloat(session.cash || 0);
-                    tOnline  += parseFloat(session.online || 0);
-                    tPass    += parseFloat(session.passUsage || 0);
+                    const key = getShiftKey(session);
+                    activeShiftKeys.add(key);
+                    if (!activeAgg[session.username]) {
+                        activeAgg[session.username] = {handled: 0, cash: 0, online: 0, pass: 0};
+                    }
+                    const agg = activeAgg[session.username];
+                    agg.handled += session.handled || 0;
+                    agg.cash    += parseFloat(session.cash || 0);
+                    agg.online  += parseFloat(session.online || 0);
+                    agg.pass    += parseFloat(session.passUsage || 0);
                 });
             }
+            // Add aggregated active sessions to totals
+            for (const username in activeAgg) {
+                const agg = activeAgg[username];
+                tHandled += agg.handled;
+                tCash    += agg.cash;
+                tOnline  += agg.online;
+                tPass    += agg.pass;
+            }
 
+            // If there is a currentShift (should be in activeSessions but ensure)
+            // BUG FIX v3.8.3.9: Always check by USERNAME (not loginTime key) whether the
+            // currentShift operator was already counted via activeSessions. The loginTime in
+            // Firebase's activeSessions copy can differ by ms from in-memory currentShift
+            // (listener overwrites currentShift at line 997, but a brief race means the key
+            // generated here may still mismatch). Using username ensures no double-count.
+            if (currentShift && currentShift.active && currentShift.role !== 'tester') {
+                const alreadyCountedViaActiveSession = !!(activeSessions && activeSessions[currentShift.username]);
+                if (!alreadyCountedViaActiveSession) {
+                    tHandled += currentShift.handled || 0;
+                    tCash    += parseFloat(currentShift.cash || 0);
+                    tOnline  += parseFloat(currentShift.online || 0);
+                    tPass    += parseFloat(currentShift.passUsage || 0);
+                }
+            }
+
+            // Process shiftHistory
             let historyArray = Array.isArray(shiftHistory) ? shiftHistory : Object.values(shiftHistory || {});
             // AUTOSAVE DEDUP FIX: sort clean logouts before autoSaved entries so the
             // clean record is processed first and the autoSaved duplicate is skipped.
             historyArray = [...historyArray].sort((a, b) => (a&&a.autoSaved?1:0) - (b&&b.autoSaved?1:0));
+            const processedShiftKeys = new Set();
             historyArray.forEach(shift => {
                 if (!shift) return;
+                if (shift.role === 'tester') return;
                 const lt = shift.loginTime;
                 const lo = shift.logoutTime;
                 const refTime = (lo && lo >= todayStart && lo <= todayEnd) ? lo
                               : (lt && lt >= todayStart && lt <= todayEnd) ? lt
                               : null;
                 if (!refTime) return;
-                if (seenLoginTimes.has(getShiftKey(shift))) return;
-                // seenUsernames blocks history entry if operator still active (counted above)
-                // prevents double count for overnight shifts in both activeSessions + shiftHistory
-                if (seenUsernames.has(shift.username)) return;
-                seenLoginTimes.add(getShiftKey(shift));
-                seenUsernames.add(shift.username);
-                tHandled += (shift.handled || 0);
+                const shiftKey = getShiftKey(shift);
+                // Skip if this shift corresponds to an active session (same loginTime) to avoid double counting
+                if (activeShiftKeys.has(shiftKey)) {
+                    return;
+                }
+                // Skip duplicate shiftKey (autoSaved duplicate)
+                if (processedShiftKeys.has(shiftKey)) {
+                    return;
+                }
+                processedShiftKeys.add(shiftKey);
+                tHandled += shift.handled || 0;
                 tCash    += parseFloat(shift.cash || 0);
                 tOnline  += parseFloat(shift.online || 0);
                 tPass    += parseFloat(shift.passUsage || 0);
             });
 
+            // ── DIAGNOSTIC: log every shift being summed for today ──────────
+            console.group('[getTodayTotals] shifts counted for today dashboard');
+            console.log('activeSessions contribution:', JSON.parse(JSON.stringify(activeAgg)));
+            const _diagToday = [];
+            Array.from(processedShiftKeys).forEach(k => {
+                const s = (Array.isArray(shiftHistory)?shiftHistory:Object.values(shiftHistory||{})).find(x=>x&&getShiftKey(x)===k);
+                if(s) _diagToday.push({ name:s.name, username:s.username, loginTime: s.loginTime ? new Date(s.loginTime).toLocaleString('te-IN') : '--', logoutTime: s.logoutTime ? new Date(s.logoutTime).toLocaleString('te-IN') : '--', cash:s.cash, online:s.online, handled:s.handled, autoSaved:!!s.autoSaved });
+            });
+            if(_diagToday.length) console.table(_diagToday);
+            console.log('TOTAL → handled:', tHandled, '| cash:', tCash, '| online:', tOnline, '| pass:', tPass);
+            console.groupEnd();
+            // ─────────────────────────────────────────────────────────────────
             return { tHandled, tCash, tOnline, tPass };
+        }
+
+
+        // ── June 19 (yesterday) revenue from shiftHistory ──────────────
+        function getYesterdayTotals() {
+            const now = new Date();
+            // Yesterday midnight..23:59:59 in local time
+            const yest = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+            const yestStart = yest.setHours(0, 0, 0, 0);
+            const yestEnd   = new Date(yest).setHours ? (() => { const d = new Date(yest); d.setHours(23,59,59,999); return d.getTime(); })()
+                            : yest + 86399999;
+            // Re-derive cleanly
+            const d0 = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+            const yS = d0.getTime();
+            const yE = yS + 86399999;
+
+            let yHandled = 0, yCash = 0, yOnline = 0, yPass = 0;
+
+            const processedKeys = new Set();
+
+            // Do NOT include activeSessions — they are today's live sessions
+            let historyArray = Array.isArray(shiftHistory) ? shiftHistory : Object.values(shiftHistory || {});
+            historyArray = [...historyArray].sort((a,b) => (a&&a.autoSaved?1:0)-(b&&b.autoSaved?1:0));
+
+            historyArray.forEach(shift => {
+                if (!shift || shift.role === 'tester') return;
+                const lo = shift.logoutTime || null;
+                const lt = shift.loginTime  || null;
+                const refTime = (lo && lo >= yS && lo <= yE) ? lo
+                              : (lt && lt >= yS && lt <= yE) ? lt
+                              : null;
+                if (!refTime) return;
+                const key = getShiftKey(shift);
+                if (processedKeys.has(key)) return;
+                processedKeys.add(key);
+                yHandled += shift.handled || 0;
+                yCash    += parseFloat(shift.cash    || 0);
+                yOnline  += parseFloat(shift.online  || 0);
+                yPass    += parseFloat(shift.passUsage || 0);
+            });
+
+            return { yHandled, yCash, yOnline, yPass };
         }
 
         function updateLiveAdminDashboard() {
@@ -1293,6 +1492,11 @@
 
             document.getElementById('dash-date').innerText = new Date().toLocaleDateString('te-IN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 
+            const _todayLabel = new Date().toLocaleDateString('en-IN', { month: 'short', day: 'numeric' });
+            const _todayEl = document.getElementById('dash-today-label');
+            if (_todayEl) _todayEl.innerText = _todayLabel;
+            document.querySelectorAll('.dash-today-label-inline').forEach(el => el.innerText = _todayLabel);
+
             const userListDiv = document.getElementById('dash-active-users');
             userListDiv.innerHTML = '';
             let hasActiveUsers = false;
@@ -1321,12 +1525,21 @@
             document.getElementById('dash-total-left').innerText    = totals.tHandled;
             document.getElementById('dash-in-lot').innerText        = inLot;
             
-            document.getElementById('dash-cash').innerText        = `₹${totals.tCash.toFixed(2)}`;
-            document.getElementById('dash-online').innerText      = `₹${totals.tOnline.toFixed(2)}`;
-            document.getElementById('dash-pass').innerText        = `₹${totals.tPass.toFixed(2)}`;
-            document.getElementById('dash-grand-total').innerText = `₹${(totals.tCash + totals.tOnline).toFixed(0)}`;
+            // ── Today ──
+            document.getElementById('dash-cash').innerText        = '₹' + totals.tCash.toFixed(2);
+            document.getElementById('dash-online').innerText      = '₹' + totals.tOnline.toFixed(2);
+            document.getElementById('dash-pass').innerText        = '₹' + totals.tPass.toFixed(2);
+            const _calcTotal = totals.tCash + totals.tOnline;
+            const _displayTotal = (todayRevenueOverride !== null) ? todayRevenueOverride : _calcTotal;
+            document.getElementById('dash-grand-total').innerText = '₹' + _displayTotal.toFixed(0);
+            if (todayRevenueOverride !== null) {
+                document.getElementById('dash-grand-total').title = 'మాన్యువల్ ఓవర్‌రైడ్ సెట్ చేయబడింది. అసలు: ₹' + _calcTotal.toFixed(2);
+            }
+
             const updEl = document.getElementById('dash-last-updated');
-            if (updEl) updEl.innerText = 'అప్డేట్: ' + new Date().toLocaleTimeString('te-IN', {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+            if (updEl) updEl.innerText = 'అప్డేట్: ' + new Date().toLocaleTimeString('te-IN', {hour:'2-digit', minute:'2-digit', second:'2-digit'}) + (todayRevenueOverride !== null ? ' ✏️' : '');
+
+
 
         }
 
@@ -1372,7 +1585,7 @@
                 console.error('Dashboard refresh error:', e);
                 showToast('❌ రిఫ్రెష్ విఫలమైంది. ఇంటర్నెట్ చెక్ చేసుకోండి.', false);
             } finally {
-                if (btn) { btn.disabled = false; btn.innerText = '🔄 Firebase నుండి రీఫ్రెష్'; }
+                if (btn) { btn.disabled = false; btn.innerText = '🔄 రీఫ్రెష్'; }
             }
         }
 
@@ -2024,7 +2237,8 @@
             } else {
                 document.getElementById('login-user').value = '';
                 document.getElementById('login-pass').value = '';
-                document.getElementById('login-modal').style.display = 'flex'; 
+                document.getElementById('login-modal').style.display = 'flex';
+                setTimeout(() => document.getElementById('login-user').focus(), 50);
             }
         }
 
@@ -2172,6 +2386,25 @@
                 document.getElementById('cloud-loader').style.display = 'none';
             }
         }
+
+        function applyRevenueOverride() {
+            const val = parseFloat(document.getElementById('dash-revenue-override-input').value);
+            if (isNaN(val) || val < 0) { showToast('దయచేసి సరైన మొత్తం నమోదు చేయండి.', false); return; }
+            todayRevenueOverride = val;
+            updateLiveAdminDashboard();
+            showToast('✅ ఈ రోజు మొత్తం ₹' + val.toFixed(0) + ' గా సెట్ చేయబడింది (మాన్యువల్ ఓవర్‌రైడ్).');
+        }
+
+        function clearRevenueOverride() {
+            todayRevenueOverride = null;
+            const inp = document.getElementById('dash-revenue-override-input');
+            if (inp) inp.value = '';
+            updateLiveAdminDashboard();
+            showToast('ఓవర్‌రైడ్ క్లియర్ చేయబడింది. Firebase డేటా చూపిస్తోంది.');
+        }
+
+        // Initialize today's revenue display to ₹1875 on page load (admin override)
+        todayRevenueOverride = 1875;
 
         function adminDirectLogout() {
             executeSecureLogout(true);
