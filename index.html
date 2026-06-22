@@ -2443,9 +2443,7 @@
             showToast('ఓవర్‌రైడ్ క్లియర్ చేయబడింది. Firebase డేటా చూపిస్తోంది.');
         }
 
-        // Initialize today's revenue display to ₹1875 on page load (admin override)
-        todayRevenueOverride = 1875;
-        todayRevenueOverrideDate = getLocalDateString(new Date()); // Auto-clears if dashboard stays open past midnight
+
 
         function adminDirectLogout() {
             executeSecureLogout(true);
