@@ -484,6 +484,27 @@
             <div class="live-stats">
                 <p><strong>ఫోన్ నంబర్:</strong> <span id="info-phone"></span></p>
                 <p><strong>బండి నంబర్:</strong> <span id="info-plate"></span></p>
+                <p style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                    <strong>వాహన రకం:</strong>
+                    <span id="info-vehicle-type-label" style="font-weight:600;"></span>
+                    <!-- Admin-only inline type changer — visible any time for admin, not just at checkout -->
+                    <span id="admin-inline-type-changer" style="display:none;">
+                        <select id="admin-inline-type-select"
+                            style="font-size:12px; padding:2px 6px; border:1px solid #f59e0b;
+                                   border-radius:4px; background:#fffbeb; color:#92400e; cursor:pointer;"
+                            onchange="adminInlineTypeChange()">
+                            <option value="">-- మార్చు --</option>
+                            <option value="2">🚲 సైకిల్</option>
+                            <option value="3">🏍️ బైక్ / స్కూటర్</option>
+                            <option value="4">🛺 ఆటో</option>
+                            <option value="5">🚗 కారు</option>
+                        </select>
+                        <button id="admin-inline-type-save" onclick="adminInlineTypeSave()"
+                            style="display:none; font-size:11px; padding:3px 8px; margin-left:4px;
+                                   background:#f59e0b; color:white; border:none; border-radius:4px;
+                                   font-weight:bold; cursor:pointer;">💾 సేవ్</button>
+                    </span>
+                </p>
                 <p><strong>సమయం:</strong> <span id="info-time">0h 0m 0s</span></p>
                 <span class="big-fee" id="info-fee" style="display:none;">₹0.00</span>
                 <span id="info-discount-msg" style="display:none; color: var(--shift-color); font-size: 12px; font-weight: bold; margin-top: 5px;"></span>
@@ -1703,10 +1724,25 @@
                 document.getElementById('checkout-title').innerText = `స్పాట్ #${currentActiveSpot.id} వివరాలు`;
                 document.getElementById('info-phone').innerText = currentActiveSpot.phone || "--";
                 document.getElementById('info-plate').innerText = currentActiveSpot.plate || "--";
+
+                // Populate vehicle type label
+                const _typeLabels = {"2":"🚲 సైకిల్","3":"🏍️ బైక్","4":"🛺 ఆటో","5":"🚗 కారు"};
+                const _curType = String(currentActiveSpot.type || '3');
+                document.getElementById('info-vehicle-type-label').innerText = _typeLabels[_curType] || _curType;
+
                 // Show admin tools only for admin/tester
                 const _adminTools = document.getElementById('admin-checkout-tools');
                 const _isAdmin = currentShift.role === 'admin' || currentShift.role === 'tester';
                 _adminTools.style.display = _isAdmin ? 'block' : 'none';
+                // Show/hide admin inline type changer (works any time, not just checkout)
+                const _inlineChanger = document.getElementById('admin-inline-type-changer');
+                if (_inlineChanger) {
+                    _inlineChanger.style.display = _isAdmin ? 'inline-flex' : 'none';
+                    if (_isAdmin) {
+                        document.getElementById('admin-inline-type-select').value = '';
+                        document.getElementById('admin-inline-type-save').style.display = 'none';
+                    }
+                }
                 if (_isAdmin) {
                     document.getElementById('admin-vehicle-type-fix').value = '';
                     document.getElementById('admin-discount-amount').value = '';
@@ -2123,6 +2159,39 @@
             setTimeout(() => { window.print(); }, 500);
         }
 
+        // Admin inline vehicle type changer — available any time an occupied spot is open,
+        // not restricted to checkout flow.
+        function adminInlineTypeChange() {
+            const sel = document.getElementById('admin-inline-type-select');
+            const saveBtn = document.getElementById('admin-inline-type-save');
+            if (!sel || !saveBtn) return;
+            saveBtn.style.display = sel.value ? 'inline-block' : 'none';
+        }
+
+        function adminInlineTypeSave() {
+            const sel = document.getElementById('admin-inline-type-select');
+            if (!sel || !sel.value || !currentActiveSpot) return;
+            const newType = sel.value;
+            const typeLabels = {"2":"🚲 సైకిల్","3":"🏍️ బైక్","4":"🛺 ఆటో","5":"🚗 కారు"};
+            const spotIdx = currentActiveSpot.id - 1;
+            currentActiveSpot.type = newType;
+            // Update label immediately
+            document.getElementById('info-vehicle-type-label').innerText = typeLabels[newType] || newType;
+            // Sync the checkout-modal dropdown too so fee recalculates correctly if admin then does checkout
+            const checkoutSel = document.getElementById('admin-vehicle-type-fix');
+            if (checkoutSel) checkoutSel.value = '';
+            // Write to Firebase
+            const ref = db.ref('/spots/' + spotIdx + '/type');
+            (isTester ? Promise.resolve() : ref.set(newType))
+                .then(() => {
+                    showToast('వాహన రకం మార్చబడింది: ' + (typeLabels[newType] || newType) + ' ✅');
+                    sel.value = '';
+                    document.getElementById('admin-inline-type-save').style.display = 'none';
+                    updateLiveCheckoutStats(); // recalculate fee if checkout stats are live
+                })
+                .catch(e => { showToast('సేవ్ ఎర్రర్: ' + e.message, false); currentActiveSpot.type = _curType; });
+        }
+
         function adminFixVehicleType() {
             const sel = document.getElementById('admin-vehicle-type-fix');
             if (!sel || !sel.value || !currentActiveSpot) return;
@@ -2343,7 +2412,7 @@
                     let occupiedCount = spotsArray.filter(s => s && s.isOccupied).length;
 
                     // FIX: Allow admin shifts to be recorded even if zero revenue
-                    if (finalHandled > 0 || finalSubTotal > 0 || p > 0 || currentShift.role === 'admin') {
+                    if (true) { // FIX: Always record shift — zero-transaction operator shifts were silently dropped, causing blank reports for the week/month
                         newShift = { 
                             name: finalName,
                             username: currentShift.username || "",
