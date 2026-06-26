@@ -2260,7 +2260,12 @@
                     function slotIndex(ms) {
                         const d = new Date(ms);
                         const minOfDay = d.getHours() * 60 + d.getMinutes();
-                        const dayNum   = Math.floor(ms / 86400000);
+                        // FIX: Use local calendar day, not UTC day.
+                        // Raw ms/86400000 uses UTC midnight which is 05:30 IST — vehicles parked
+                        // between 00:00–05:30 IST got dayNum one day ahead, inflating slot count
+                        // by 2 and charging ₹60 instead of ₹30.
+                        const tzOffsetMs = new Date().getTimezoneOffset() * 60000;
+                        const dayNum     = Math.floor((ms - tzOffsetMs) / 86400000);
                         if (minOfDay < 360)  return dayNum * 2 - 1; // 00:00–06:00: night tail
                         if (minOfDay < 1320) return dayNum * 2;     // 06:00–22:00: day slot
                         return dayNum * 2 + 1;                       // 22:00–24:00: night slot
