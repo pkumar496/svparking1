@@ -1815,7 +1815,7 @@
                 </div>
             `;
             document.getElementById('receipt-body').innerHTML = printHTML;
-            setTimeout(() => { window.print(); }, 500);
+            safePrint(600);
         }
 
         function printCurrentBill() {
@@ -1839,7 +1839,7 @@
                 <div style="text-align:center; font-size:11px; margin-top:5px;">ఇది ఫైనల్ బిల్లు కాదు</div>
             `;
             document.getElementById('receipt-body').innerHTML = printHTML;
-            setTimeout(() => { window.print(); }, 500);
+            safePrint(600);
         }
 
         let checkinInProgress = false; // BUG B FIX: double-tap guard for check-in
@@ -1900,13 +1900,13 @@
                 document.getElementById('receipt-type').innerText = 'ఎంట్రీ రసీదు';
                 document.getElementById('receipt-body').innerHTML = receiptHTML;
                 showToast('WhatsApp తెరుచుకుంటోంది... వెనక్కి వచ్చిన తర్వాత రసీదు ప్రింట్ అవుతుంది.');
-                sendWhatsAppReceipt(cleanPhone, msg, () => { window.print(); });
+                sendWhatsAppReceipt(cleanPhone, msg, () => { safePrint(600); });
             } else if (actionType === 'print_only') {
                 document.body.className = 'print-mode-receipt';
                 document.getElementById('receipt-type').innerText = 'ఎంట్రీ రసీదు';
                 document.getElementById('receipt-body').innerHTML = receiptHTML;
-                setTimeout(() => { window.print(); }, 500);
                 showToast('స్పాట్ #' + currentActiveSpot.id + ' చెక్-ఇన్ చేయబడింది. రసీదు ప్రింట్ అవుతోంది...');
+                safePrint(600);
             } else {
                 showToast('స్పాట్ #' + currentActiveSpot.id + ' చెక్-ఇన్ చేయబడింది.');
             }
@@ -2156,7 +2156,7 @@
             
             showToast(`స్పాట్ #${spotId} చెక్-అవుట్ చేయబడింది. రుసుము: ₹${currentFeeCalculation.toFixed(2)}`, false);
             
-            setTimeout(() => { window.print(); }, 500);
+            safePrint(600);
         }
 
         // Admin inline vehicle type changer — available any time an occupied spot is open,
@@ -2385,7 +2385,7 @@
                 <div class="receipt-row" style="font-size:10px; margin-top:5px; color:#555;"><span>పాస్ ద్వారా వాడినది:</span> <span>₹${parseFloat(currentShift.passUsage || 0).toFixed(2)}</span></div>
             `;
             document.getElementById('receipt-body').innerHTML = printHTML;
-            setTimeout(() => { window.print(); }, 500);
+            safePrint(600);
         }
 
         async function executeSecureLogout(isShiftEnd = false) {
@@ -2998,7 +2998,7 @@
                     });
                 });
             }
-            setTimeout(() => { window.print(); }, 500);
+            safePrint(600);
         }
 
         // ================================================================
@@ -3204,7 +3204,7 @@
                 <div style="font-size:11px; color:#555; text-align:center;">జారీ చేసినవారు: ${escapeHTML(currentShift.name || 'Admin')}</div>
             `;
             document.body.className = 'print-mode-receipt';
-            setTimeout(() => { window.print(); }, 300);
+            safePrint(600);
         }
 
         function openNewPassForm(phone) {
