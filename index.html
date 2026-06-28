@@ -3314,6 +3314,13 @@
         function checkAutoRenewal() {
             const today = new Date();
             if (today.getDate() !== 1) return; // only on the 1st
+
+            // DEDUP GUARD: only run once per calendar month, not on every page load.
+            // Store 'autoRenewed-YYYY-MM' in localStorage so subsequent page opens skip Firebase.
+            const monthKey = today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0');
+            const lsKey   = 'autoRenewed-' + monthKey;
+            if (localStorage.getItem(lsKey)) return; // already ran this month on this device
+
             const monthStart = new Date(today.getFullYear(), today.getMonth(), 1, 0, 0, 0, 0).getTime();
 
             db.ref('/monthlyPasses').once('value').then(snap => {
@@ -3329,8 +3336,12 @@
                 });
                 if (Object.keys(updates).length > 0 && !isTester) {
                     db.ref('/monthlyPasses').update(updates).then(() => {
+                        localStorage.setItem(lsKey, '1'); // mark done for this month
                         console.log('Auto-renewed ' + Object.keys(updates).length + ' monthly passes on the 1st.');
                     });
+                } else {
+                    // Nothing to renew — still mark done so we don't re-query Firebase on every load
+                    localStorage.setItem(lsKey, '1');
                 }
             }).catch(e => console.warn('Auto-renewal check failed:', e));
         }
