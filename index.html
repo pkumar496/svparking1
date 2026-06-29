@@ -952,6 +952,58 @@
 
         window.addEventListener('afterprint', () => { document.body.className = ''; });
 
+        // safePrint: replaces window.print() everywhere.
+        // On Android WebView, window.print() silently does nothing — safePrint detects this
+        // and opens the receipt in a new popup window the user can save/screenshot/print.
+        function safePrint(delayMs) {
+            delayMs = delayMs || 600;
+            setTimeout(function () {
+                try {
+                    if (typeof window.print !== 'function') { _showPrintFallback(); return; }
+                    window.print();
+                    // afterprint fires when the print dialog closes (success or cancel).
+                    // On WebView it never fires — after 2.5s if body class is still set, print silently failed.
+                    setTimeout(function () {
+                        if (document.body.className.indexOf('print-mode') !== -1) {
+                            document.body.className = '';
+                            _showPrintFallback();
+                        }
+                    }, 2500);
+                } catch (e) {
+                    document.body.className = '';
+                    _showPrintFallback();
+                }
+            }, delayMs);
+        }
+
+        function _showPrintFallback() {
+            const receiptEl = document.getElementById('print-receipt-section');
+            if (!receiptEl) return;
+            const win = window.open('', '_blank', 'width=360,height=640');
+            if (!win) { showToast('Pop-up బ్లాకర్ వల్ల రసీదు తెరవడం సాధ్యపడలేదు.', false); return; }
+            win.document.write(
+                '<!DOCTYPE html><html><head><meta charset="utf-8">' +
+                '<title>Receipt</title>' +
+                '<style>' +
+                'body{font-family:monospace;font-size:13px;max-width:300px;margin:12px auto;color:#000}' +
+                '.receipt-header{text-align:center;font-weight:bold;font-size:15px;margin-bottom:4px}' +
+                '.receipt-subheader{text-align:center;font-size:12px;margin-bottom:8px;font-weight:bold}' +
+                '.receipt-line{border-bottom:1px dashed #000;margin:6px 0}' +
+                '.receipt-row{display:flex;justify-content:space-between;margin:3px 0;font-size:12px}' +
+                '.receipt-footer{text-align:center;margin-top:8px;font-size:10px}' +
+                'button{display:block;width:100%;margin:14px 0 4px;padding:10px;background:#1a5276;color:#fff;border:none;border-radius:6px;font-size:14px;cursor:pointer}' +
+                '@media print{button{display:none}}' +
+                '</style></head><body>' +
+                '<div class="receipt-header">Sri Venkateswara Parking</div>' +
+                '<div class="receipt-subheader">' + (document.getElementById('receipt-type') ? document.getElementById('receipt-type').innerText : '') + '</div>' +
+                receiptEl.querySelector('#receipt-body').innerHTML +
+                '<button onclick="window.print()">🖨️ ప్రింట్ / సేవ్ చేయి</button>' +
+                '</body></html>'
+            );
+            win.document.close();
+            showToast('రసీదు కొత్త విండోలో తెరవబడింది.');
+        }
+
         function escapeHTML(str) {
             if (!str) return '';
             return str.replace(/[&<>'"]/g, 
