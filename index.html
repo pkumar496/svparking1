@@ -120,7 +120,7 @@
         .user-item { display: flex; justify-content: space-between; align-items: center; padding: 8px 5px; border-bottom: 1px solid #eee; font-size: 14px;}
         .user-item button { background: var(--occupied-color); color: white; border: none; border-radius: 3px; cursor: pointer; padding: 4px 10px;}
 
-        .customer-table { width: 100%; border-collapse: collapse; font-size: 13px; text-align: left; }
+        .customer-table { width: 100%; min-width: 640px; border-collapse: collapse; font-size: 12px; text-align: left; }
         .customer-table th { background: #f1f5f9; padding: 10px; border-bottom: 2px solid #cbd5e1; }
         .customer-table td { padding: 10px; border-bottom: 1px solid #e2e8f0; }
         .customer-search { width: 100%; padding: 10px; margin-bottom: 15px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; font-size: 16px; }
@@ -613,15 +613,17 @@
             
             <input type="text" class="customer-search" id="customer-search-input" placeholder="బండి నంబర్‌తో వెతకండి..." onkeyup="filterCustomerDB()">
             
-            <div style="max-height: 300px; overflow-y: auto; border: 1px solid #ccc; border-radius: 4px; margin-bottom: 15px;">
+            <div style="max-height: 340px; overflow-y: auto; overflow-x: auto; border: 1px solid #ccc; border-radius: 4px; margin-bottom: 15px;">
                 <table class="customer-table">
                     <thead>
                         <tr>
                             <th>స్లాట్</th>
                             <th>బండి నంబర్</th>
                             <th>వాహన రకం</th>
-                            <th>చెక్-ఇన్ సమయం</th>
-                            <th>చెక్-అవుట్ సమయం</th>
+                            <th>చెక్-ఇన్</th>
+                            <th>చెక్-అవుట్</th>
+                            <th>మొత్తం సమయం</th>
+                            <th>ఫీజు ₹</th>
                         </tr>
                     </thead>
                     <tbody id="customer-db-body">
@@ -829,6 +831,24 @@
         if (!firebase.apps.length) { firebase.initializeApp(firebaseConfig); }
         const db = firebase.database();
 
+        // ── Server-corrected clock ──────────────────────────────────────────
+        // Firebase continuously reports the gap between this device's clock and
+        // the database server's clock at /.info/serverTimeOffset. serverNow()
+        // adds that gap to the local clock, so every revenue-critical timestamp
+        // reflects real server time even if a device's clock is wrong, drifted,
+        // or was deliberately changed — with no per-write round trip needed.
+        // Falls back to plain Date.now() before the first offset arrives, or if
+        // running as a tester (no live Firebase connection).
+        let serverTimeOffsetMs = 0;
+        let serverTimeOffsetReady = false;
+        try {
+            db.ref('.info/serverTimeOffset').on('value', (snap) => {
+                const v = snap.val();
+                if (typeof v === 'number') { serverTimeOffsetMs = v; serverTimeOffsetReady = true; }
+            });
+        } catch (e) { console.warn('serverTimeOffset listener failed:', e); }
+        function serverNow() { return Date.now() + (serverTimeOffsetMs || 0); }
+
         const TOTAL_SPOTS = 300;
         let systemSettings = {
             rates: { "2": 10.00, "3": 15.00, "4": 30.00, "5": 50.00 },
@@ -935,11 +955,33 @@
             sessionStorage.removeItem('parkingShiftSession');
         }
 
+        // India Standard Time = UTC+5:30, no DST. This is a single fixed-location
+        // (Guntur) business, so every date-bucketed value — reports, dashboard
+        // today/yesterday windows, transaction bucketing — must anchor to IST,
+        // never to whatever timezone an individual phone/browser happens to be
+        // configured with. getUTC* getters are used deliberately below: applying
+        // them to an already-shifted timestamp yields the IST wall-clock reading
+        // regardless of the environment's own local timezone.
+        const IST_OFFSET_MS = 5.5 * 3600000;
+
         function getLocalDateString(d) {
-            const year = d.getFullYear();
-            const month = String(d.getMonth() + 1).padStart(2, '0');
-            const day = String(d.getDate()).padStart(2, '0');
+            const ms = (d instanceof Date) ? d.getTime() : d;
+            const shifted = new Date(ms + IST_OFFSET_MS);
+            const year  = shifted.getUTCFullYear();
+            const month = String(shifted.getUTCMonth() + 1).padStart(2, '0');
+            const day   = String(shifted.getUTCDate()).padStart(2, '0');
             return `${year}-${month}-${day}`;
+        }
+
+        // Returns {start, end} epoch ms for the IST calendar day containing `ms`
+        // (defaults to the current server-corrected instant). Use this instead of
+        // `new Date().setHours(0,0,0,0)` for any revenue-window query — the old
+        // pattern used whichever timezone the device happened to be set to.
+        function getISTDayBounds(ms) {
+            if (ms === undefined) ms = serverNow();
+            const shifted = ms + IST_OFFSET_MS;
+            const dayStartShifted = Math.floor(shifted / 86400000) * 86400000;
+            return { start: dayStartShifted - IST_OFFSET_MS, end: dayStartShifted - IST_OFFSET_MS + 86400000 - 1 };
         }
 
         let spots = Array.from({length: TOTAL_SPOTS}, (_, i) => ({ id: i + 1, isOccupied: false, plate: '', personName: '', phone: '', type: null, entryTime: null, hasPass: false }));
@@ -1307,15 +1349,41 @@
 
                 function clearRevenueHistory() {
             if (currentShift.role !== 'tester' && currentShift.role !== 'admin') return;
-            if (confirm("ఆదాయం మరియు పాత రిపోర్ట్ హిస్టరీ మొత్తం డిలీట్ చేయాలా?")) {
-                let freshStats = { totalEntered: 0, totalLeft: 0, totalCash: 0, totalOnline: 0, totalPass: 0 };
-                firebase.database().ref('/globalStats').set(freshStats);
-                firebase.database().ref('/shiftHistory').remove();
-                globalStats = freshStats;
-                shiftHistory = [];
-                updateLiveAdminDashboard();
-                showToast("ఆదాయం & హిస్టరీ క్లియర్ చేయబడింది.");
-            }
+            // FIX: Only wipe shifts older than today so today's revenue is never lost.
+            // Admin must confirm with explicit choice of scope.
+            const _choice = confirm(
+                'పాత హిస్టరీ క్లియర్ చేయాలా?\n\n' +
+                'OK  → ఈ రోజు కాకుండా పాత రికార్డులు మాత్రమే తొలగించబడతాయి\n' +
+                'Cancel → ఏమీ చేయబడదు'
+            );
+            if (!_choice) return;
+            const _todayStart = getISTDayBounds().start;
+            db.ref('/shiftHistory').once('value').then(snap => {
+                if (!snap.exists()) { showToast('హిస్టరీ ఇప్పటికే ఖాళీగా ఉంది.'); return; }
+                const all = snap.val();
+                const allArr = Array.isArray(all) ? all : Object.values(all);
+                const keepEntries = allArr.filter(s => {
+                    if (!s) return false;
+                    const refT = s.logoutTime || s.loginTime;
+                    return refT && refT >= _todayStart; // keep today
+                });
+                // Re-write only today's records; wipe the rest
+                if (!isTester) {
+                    db.ref('/shiftHistory').remove().then(() => {
+                        const writes = keepEntries.map(e => db.ref('/shiftHistory').push(e));
+                        return Promise.all(writes);
+                    }).then(() => {
+                        // Update in-memory shiftHistory
+                        shiftHistory = keepEntries;
+                        updateLiveAdminDashboard();
+                        showToast('✅ పాత హిస్టరీ తొలగించబడింది. ఈ రోజు రికార్డులు సురక్షితంగా ఉన్నాయి.');
+                    }).catch(e => showToast('క్లియర్ ఎర్రర్: ' + e.message, false));
+                } else {
+                    shiftHistory = keepEntries;
+                    updateLiveAdminDashboard();
+                    showToast('(Tester) హిస్టరీ సిమ్యులేటెడ్ క్లియర్.');
+                }
+            }).catch(e => showToast('హిస్టరీ చదవడం విఫలమైంది: ' + e.message, false));
         }
 
         function clearAllSpots() {
@@ -1373,7 +1441,7 @@
             tbody.innerHTML = '';
             
             if(!customerDB || Object.keys(customerDB).length === 0) {
-                tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;">డేటాబేస్‌లో కస్టమర్లు ఎవరూ లేరు.</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:16px; color:#94a3b8;">డేటాబేస్‌లో కస్టమర్లు ఎవరూ లేరు.</td></tr>';
                 return;
             }
 
@@ -1389,13 +1457,31 @@
                     let checkOutStr = cust.checkOut ? new Date(cust.checkOut).toLocaleString('te-IN') : '--';
                     let typeStr = cust.vehicleType ? (typeLabels[cust.vehicleType] || cust.vehicleType) : '--';
                     let slotStr = cust.slotNo ? `#${cust.slotNo}` : '--';
+                    // Total time parked
+                    let totalTimeStr = '--';
+                    const _inTs  = cust.checkIn || cust.lastSeen;
+                    const _outTs = cust.checkOut;
+                    if (_inTs && _outTs && _outTs > _inTs) {
+                        const _mins = Math.floor((_outTs - _inTs) / 60000);
+                        const _hrs  = Math.floor(_mins / 60);
+                        const _rem  = _mins % 60;
+                        totalTimeStr = _hrs > 0 ? `${_hrs}గం ${_rem}నిమి` : `${_rem}నిమి`;
+                    } else if (_inTs && !_outTs) {
+                        const _mins = Math.floor((Date.now() - _inTs) / 60000);
+                        const _hrs  = Math.floor(_mins / 60);
+                        const _rem  = _mins % 60;
+                        totalTimeStr = (_hrs > 0 ? `${_hrs}గం ${_rem}నిమి` : `${_rem}నిమి`) + ' 🟢';
+                    }
+                    const feeStr = cust.fee != null ? '₹' + parseFloat(cust.fee).toFixed(0) : (cust.checkOut ? '--' : '⏳');
                     tbody.innerHTML += `
                         <tr>
                             <td>${slotStr}</td>
                             <td><strong>${escapeHTML(cust.plate || '--')}</strong></td>
                             <td>${typeStr}</td>
-                            <td>${checkInStr}</td>
-                            <td>${checkOutStr}</td>
+                            <td style="white-space:nowrap;">${checkInStr}</td>
+                            <td style="white-space:nowrap;">${checkOutStr}</td>
+                            <td style="white-space:nowrap; font-weight:500;">${totalTimeStr}</td>
+                            <td style="text-align:right; font-weight:bold; color:${cust.fee ? 'var(--open-color)' : '#94a3b8'};">${feeStr}</td>
                         </tr>
                     `;
                 }
@@ -1403,8 +1489,7 @@
         }
 
         function getTodayTotals() {
-            const todayStart = new Date().setHours(0, 0, 0, 0);
-            const todayEnd   = new Date().setHours(23, 59, 59, 999);
+            const { start: todayStart, end: todayEnd } = getISTDayBounds();
             let tHandled = 0; let tCash = 0; let tOnline = 0; let tPass = 0;
 
             // Aggregate active sessions per username (should be at most one, but sum anyway)
@@ -1519,20 +1604,13 @@
 
         // ── June 19 (yesterday) revenue from shiftHistory ──────────────
         function getYesterdayTotals() {
-            const now = new Date();
-            // Yesterday midnight..23:59:59 in local time
-            const yest = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
-            const yestStart = yest.setHours(0, 0, 0, 0);
-            const yestEnd   = new Date(yest).setHours ? (() => { const d = new Date(yest); d.setHours(23,59,59,999); return d.getTime(); })()
-                            : yest + 86399999;
-            // Re-derive cleanly
-            const d0 = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
-            const yS = d0.getTime();
-            const yE = yS + 86399999;
+            const todayBounds = getISTDayBounds();
+            const { start: yS, end: yE } = getISTDayBounds(todayBounds.start - 1); // one ms before today's IST start = yesterday's IST day
 
             let yHandled = 0, yCash = 0, yOnline = 0, yPass = 0;
 
             const processedKeys = new Set();
+            const processedYestUsernames = new Set(); // username dedup same as getTodayTotals
 
             // Do NOT include activeSessions — they are today's live sessions
             let historyArray = Array.isArray(shiftHistory) ? shiftHistory : Object.values(shiftHistory || {});
@@ -1548,7 +1626,9 @@
                 if (!refTime) return;
                 const key = getShiftKey(shift);
                 if (processedKeys.has(key)) return;
+                if (processedYestUsernames.has(shift.username)) return; // FIX: username dedup
                 processedKeys.add(key);
+                processedYestUsernames.add(shift.username);
                 yHandled += shift.handled || 0;
                 yCash    += parseFloat(shift.cash    || 0);
                 yOnline  += parseFloat(shift.online  || 0);
@@ -1558,6 +1638,57 @@
             return { yHandled, yCash, yOnline, yPass };
         }
 
+        // ── Transaction-based totals cache ──────────────────────────────────
+        // Primary source for the dashboard's today/yesterday revenue tiles.
+        // Each /transactions record is bucketed by its own server-corrected exit
+        // time, so a shift that starts before midnight and ends after it splits
+        // correctly across both days automatically — there's no shift-level
+        // window to fall outside of, which is what caused the original ₹0 bug.
+        // getTodayTotals()/getYesterdayTotals() (below) remain as a fallback for
+        // any day that genuinely has zero transaction records (e.g. before this
+        // logging existed), following the same "render now, refresh in background"
+        // pattern already used elsewhere in this file.
+        let txTotalsCache = { dateStr: null, today: null, yesterday: null };
+        let _txCacheFetching = false;
+
+        async function fetchTxWindowTotals(startTs, endTs) {
+            const snap = await db.ref('/transactions').orderByChild('time').startAt(startTs).endAt(endTs).once('value');
+            const data = snap.val();
+            const arr = data ? (Array.isArray(data) ? data : Object.values(data)) : [];
+            let handled = 0, cash = 0, online = 0, pass = 0;
+            arr.forEach(tx => {
+                if (!tx) return;
+                const fee = parseFloat(tx.fee || 0);
+                handled += 1;
+                if (tx.paymentMethod === 'CASH') cash += fee;
+                else if (tx.paymentMethod === 'ONLINE') online += fee;
+                else if (tx.paymentMethod === 'PASS') pass += fee;
+            });
+            return { handled, cash, online, pass, count: arr.length };
+        }
+
+        function refreshTxTotalsCache() {
+            const todayStr = getLocalDateString(new Date());
+            if (txTotalsCache.dateStr === todayStr && txTotalsCache.today) return; // already fresh for today
+            if (_txCacheFetching || isTester) return;
+            _txCacheFetching = true;
+
+            const today = getISTDayBounds();
+            const yesterday = getISTDayBounds(today.start - 1);
+            const todayStart = today.start, todayEnd = today.end;
+            const yStart = yesterday.start, yEnd = yesterday.end;
+
+            Promise.all([
+                fetchTxWindowTotals(todayStart, todayEnd),
+                fetchTxWindowTotals(yStart, yEnd)
+            ]).then(([today, yesterday]) => {
+                txTotalsCache = { dateStr: todayStr, today, yesterday };
+                updateLiveAdminDashboard(); // re-render now that fresh totals are in
+            }).catch(e => console.warn('Transaction totals fetch failed:', e))
+              .finally(() => { _txCacheFetching = false; });
+        }
+
+        let _dashboardUpdating = false; // Guard against recursive updateLiveAdminDashboard calls
         function updateLiveAdminDashboard() {
             const dash = document.getElementById('main-admin-dashboard');
             // FIX Bug A: Auto-clear todayRevenueOverride if it was set on a previous day
@@ -1570,6 +1701,9 @@
                 return;
             }
             dash.style.display = 'block';
+            if (_dashboardUpdating) return; // prevent recursive re-entry from auto-fetch callback
+            _dashboardUpdating = true;
+            try {
 
             // FIX v3.8.3.8.2.2: If shiftHistory is still empty right after login/page-load,
             // the in-memory state hasn't been populated by the Firebase listener yet.
@@ -1577,8 +1711,7 @@
             // the dashboard showing ₹0 revenue immediately after a logout+login cycle.
             const histArr = Array.isArray(shiftHistory) ? shiftHistory : Object.values(shiftHistory || {});
             if (histArr.length === 0 && !isTester) {
-                const todayStart = new Date().setHours(0, 0, 0, 0);
-                const todayEnd   = new Date().setHours(23, 59, 59, 999);
+                const { start: todayStart, end: todayEnd } = getISTDayBounds();
                 // FETCH FIX: plain once('value') — orderByChild('logoutTime').startAt()
                 // silently drops autoSaved entries where logoutTime=null.
                 db.ref('/shiftHistory').once('value').then(snap => {
@@ -1628,7 +1761,13 @@
             }
             if(!hasActiveUsers) userListDiv.innerHTML = '<span style="font-size: 13px; color: #94a3b8;">ఎవరూ లేరు</span>';
 
-            let totals = getTodayTotals();
+            refreshTxTotalsCache(); // kick off/refresh background fetch; no-op if already fresh for today
+            let totals;
+            if (txTotalsCache.today && txTotalsCache.today.count > 0) {
+                totals = { tHandled: txTotalsCache.today.handled, tCash: txTotalsCache.today.cash, tOnline: txTotalsCache.today.online, tPass: txTotalsCache.today.pass };
+            } else {
+                totals = getTodayTotals(); // fallback: no transaction records for today yet (or still loading)
+            }
             let spotsArray = Array.isArray(spots) ? spots : Object.values(spots || {});
             let inLot = spotsArray.filter(s => s && s.isOccupied).length;
             let totalEnteredToday = totals.tHandled + inLot;
@@ -1651,8 +1790,31 @@
             const updEl = document.getElementById('dash-last-updated');
             if (updEl) updEl.innerText = 'అప్డేట్: ' + new Date().toLocaleTimeString('te-IN', {hour:'2-digit', minute:'2-digit', second:'2-digit'}) + (todayRevenueOverride !== null ? ' ✏️' : '');
 
+            // ── Yesterday + trend ──────────────────────────────────────────
+            let yest;
+            if (txTotalsCache.yesterday && txTotalsCache.yesterday.count > 0) {
+                yest = { yHandled: txTotalsCache.yesterday.handled, yCash: txTotalsCache.yesterday.cash, yOnline: txTotalsCache.yesterday.online, yPass: txTotalsCache.yesterday.pass };
+            } else {
+                yest = getYesterdayTotals(); // fallback: no transaction records for yesterday yet (or still loading)
+            }
+            const _yestLabel = (() => { const d = new Date(); d.setDate(d.getDate()-1); return d.toLocaleDateString('en-IN',{month:'short',day:'numeric'}); })();
+            const _yLabelEl = document.getElementById('dash-yest-label');
+            if (_yLabelEl) _yLabelEl.innerText = _yestLabel;
 
 
+            // Trend badge — compare today's total to yesterday's
+            const _todayTotal = totals.tCash + totals.tOnline;
+            const _yestTotal  = yest.yCash + yest.yOnline;
+            const _trendEl = document.getElementById('dash-trend-badge');
+            if (_trendEl && _yestTotal > 0) {
+                const _diff = _todayTotal - _yestTotal;
+                const _pct  = Math.abs((_diff / _yestTotal) * 100).toFixed(0);
+                if (_diff > 0)       { _trendEl.innerText = '📈 +' + _pct + '%'; _trendEl.style.color = '#34d399'; _trendEl.style.background = 'rgba(16,185,129,0.15)'; }
+                else if (_diff < 0)  { _trendEl.innerText = '📉 -' + _pct + '%'; _trendEl.style.color = '#f87171'; _trendEl.style.background = 'rgba(239,68,68,0.12)'; }
+                else                 { _trendEl.innerText = '➡ సమానం'; _trendEl.style.color = '#94a3b8'; }
+            } else if (_trendEl) { _trendEl.innerText = ''; }
+
+            } finally { _dashboardUpdating = false; }
         }
 
         // FIREBASE LIVE REFRESH: Explicitly re-fetch today's shiftHistory + activeSessions
@@ -1662,8 +1824,9 @@
             if (btn) { btn.disabled = true; btn.innerText = 'రీఫ్రెష్ అవుతోన్నది...'; }
 
             try {
-                const todayStart = new Date().setHours(0, 0, 0, 0);
-                const todayEnd   = new Date().setHours(23, 59, 59, 999);
+                const { start: todayStart, end: todayEnd } = getISTDayBounds();
+
+                txTotalsCache = { dateStr: null, today: null, yesterday: null }; // force a fresh transaction fetch
 
                 const [histSnap, sessSnap] = await Promise.all([
                     // FIX v3.8.3.8.2.2: Query by logoutTime (revenue day) so shifts that logged in
@@ -1921,7 +2084,7 @@
             currentActiveSpot.phone = cleanPhone;
             currentActiveSpot.type = type;
             currentActiveSpot.hasPass = hasPass;
-            currentActiveSpot.entryTime = Date.now();
+            currentActiveSpot.entryTime = serverNow();
             currentActiveSpot.entryOperator = currentShift.username;
 
             globalStats.totalEntered = (globalStats.totalEntered || 0) + 1;
@@ -2148,7 +2311,7 @@
                     : (currentActiveSpot.plate || '').toUpperCase().replace(/[.#$\[\]]/g, '');
 
                 if (coKey) {
-                    const checkOutTime = Date.now();
+                    const checkOutTime = serverNow();
                     // Update local cache
                     if (!customerDB) customerDB = {};
                     if (!customerDB[coKey]) {
@@ -2165,9 +2328,11 @@
                         if (currentActiveSpot.id) customerDB[coKey].slotNo = currentActiveSpot.id;
                     }
                     // Always write to Firebase directly — don't rely on local cache lookup
+                    const _coFee = parseFloat(document.getElementById('fee-display')?.innerText?.replace(/[^0-9.]/g,'') || 0) || null;
+                    if (_coFee) { customerDB[coKey].fee = _coFee; }
                     if (!isTester) {
                         firebase.database().ref('/customerDB/' + coKey)
-                            .update({ checkOut: checkOutTime, slotNo: currentActiveSpot.id || null })
+                            .update({ checkOut: checkOutTime, slotNo: currentActiveSpot.id || null, fee: _coFee || null })
                             .catch(e => console.error('customerDB checkOut write failed:', e));
                     }
                 }
@@ -2188,7 +2353,7 @@
                     fee: currentFeeCalculation,
                     entryOp: entryOp,
                     exitOp: currentShift.username,
-                    time: Date.now(),
+                    time: serverNow(),
                     type: currentActiveSpot.type,
                     paymentMethod: method
                 });
@@ -2275,7 +2440,7 @@
         function updateLiveCheckoutStats() {
             if(!currentActiveSpot || !currentActiveSpot.isOccupied) return;
             
-            const rawElapsedSeconds = Math.floor((Date.now() - currentActiveSpot.entryTime) / 1000); 
+            const rawElapsedSeconds = Math.floor((serverNow() - currentActiveSpot.entryTime) / 1000); 
             const elapsedSeconds = Math.max(0, rawElapsedSeconds); 
             
             const h = Math.floor(elapsedSeconds / 3600); const m = Math.floor((elapsedSeconds % 3600) / 60); const s = elapsedSeconds % 60;
@@ -2306,18 +2471,20 @@
                     const RATE = segmentRate;
                     const entryMs = currentActiveSpot.entryTime
                         ? parseInt(currentActiveSpot.entryTime)
-                        : (Date.now() - elapsedSeconds * 1000);
-                    const exitMs  = Date.now();
+                        : (serverNow() - elapsedSeconds * 1000);
+                    const exitMs  = serverNow();
 
+                    // Hardcoded to IST (UTC+5:30, no DST) rather than the device's own
+                    // timezone. This is a single fixed-location (Guntur) business — a
+                    // phone with a misconfigured timezone (e.g. set to UTC) previously
+                    // produced a different fee for the same real-world parking duration.
+                    // getUTC* getters on an already-IST-shifted timestamp give the IST
+                    // wall-clock reading regardless of the device's own local timezone.
                     function slotIndex(ms) {
-                        const d = new Date(ms);
-                        const minOfDay = d.getHours() * 60 + d.getMinutes();
-                        // FIX: Use local calendar day, not UTC day.
-                        // Raw ms/86400000 uses UTC midnight which is 05:30 IST — vehicles parked
-                        // between 00:00–05:30 IST got dayNum one day ahead, inflating slot count
-                        // by 2 and charging ₹60 instead of ₹30.
-                        const tzOffsetMs = new Date().getTimezoneOffset() * 60000;
-                        const dayNum     = Math.floor((ms - tzOffsetMs) / 86400000);
+                        const shifted = ms + IST_OFFSET_MS;
+                        const d = new Date(shifted);
+                        const minOfDay = d.getUTCHours() * 60 + d.getUTCMinutes();
+                        const dayNum   = Math.floor(shifted / 86400000);
                         if (minOfDay < 360)  return dayNum * 2 - 1; // 00:00–06:00: night tail
                         if (minOfDay < 1320) return dayNum * 2;     // 06:00–22:00: day slot
                         return dayNum * 2 + 1;                       // 22:00–24:00: night slot
@@ -2473,8 +2640,8 @@
                         newShift = { 
                             name: finalName,
                             username: currentShift.username || "",
-                            loginTime: currentShift.loginTime || Date.now(),
-                            logoutTime: Date.now(), 
+                            loginTime: currentShift.loginTime || serverNow(),
+                            logoutTime: serverNow(), 
                             handled: finalHandled, 
                             leftInLot: occupiedCount,
                             cash: c, 
@@ -2593,7 +2760,7 @@
             }
 
             if (systemSettings.users[user] && systemSettings.users[user].pass === pass) {
-                currentShift = { active: true, username: user, name: systemSettings.users[user].name, role: systemSettings.users[user].role, loginTime: Date.now(), handled: 0, cash: 0, online: 0, passUsage: 0 };
+                currentShift = { active: true, username: user, name: systemSettings.users[user].name, role: systemSettings.users[user].role, loginTime: serverNow(), handled: 0, cash: 0, online: 0, passUsage: 0 };
                 
                 autoSaveFired = false; // New session — allow auto-save to fire if browser is closed
                 restoredOffline = false; // FIX Bug 1: Clear offline flag — this is a fresh authenticated login
@@ -2748,7 +2915,10 @@
             const now = new Date();
             let start, end = getLocalDateString(now);
 
-            if (type === 'today') {
+            if (type === 'yesterday') {
+                const yesterdayStartMs = getISTDayBounds().start - 1; // just before today's IST midnight = yesterday
+                start = end = getLocalDateString(yesterdayStartMs);
+            } else if (type === 'today') {
                 start = end;
             } else if (type === 'week') {
                 const d = new Date();
@@ -2780,17 +2950,26 @@
             const startTs = new Date(+sParts[0], +sParts[1]-1, +sParts[2], 0,  0,  0,   0).getTime();
             const endTs   = new Date(+eParts[0], +eParts[1]-1, +eParts[2], 23, 59, 59, 999).getTime();
 
-            // BUG FIX: orderByChild('logoutTime').startAt(X) silently drops shifts where
-            // logoutTime=null (crashes, auto-saves, active-at-month-end). Firebase treats null
-            // as lowest sort value — below any number — so null records never pass startAt().
-            // Fix: fetch ALL shiftHistory with plain once('value') and filter client-side.
+            // PRIMARY SOURCE: /transactions — one immutable, server-timestamped record
+            // per vehicle checkout (fee, paymentMethod, exitOp, time). Queried by range
+            // directly via orderByChild — much cheaper than fetching the whole collection.
+            //
+            // FALLBACK: /shiftHistory — used only for a date that has ZERO transaction
+            // records (e.g. history from before per-transaction logging existed, or a
+            // write that failed). orderByChild('logoutTime').startAt(X) would silently
+            // drop shifts with logoutTime=null (autoSaves, crashes) since Firebase treats
+            // null as the lowest sort value, so the fallback still fetches ALL shiftHistory
+            // with plain once('value') and filters client-side, exactly as before.
             Promise.all([
+                db.ref('/transactions').orderByChild('time').startAt(startTs).endAt(endTs).once('value'),
                 db.ref('/shiftHistory').once('value'),
                 db.ref('/activeSessions').once('value')
-            ]).then(([histSnap, sessSnap]) => {
+            ]).then(([txSnap, histSnap, sessSnap]) => {
+                const txData   = txSnap.val();
                 const histData = histSnap.val();
                 const sessData = sessSnap.val();
 
+                let txArray = txData ? (Array.isArray(txData) ? txData : Object.values(txData)) : [];
                 let historyArray = [];
                 if (histData) {
                     historyArray = Array.isArray(histData) ? histData : Object.values(histData);
@@ -2804,15 +2983,9 @@
                 }
 
                 const dayMap = {};
-                const seenLoginTimes = new Set();
 
-                function addToDay(dateStr, name, h, c, o, p, isLive, loginTime, username) {
-                    const shiftKey = getShiftKey({ username, loginTime });
-                    if (seenLoginTimes.has(shiftKey)) return;
-                    seenLoginTimes.add(shiftKey);
-
+                function addToDay(dateStr, name, h, c, o, p, isLive, loginTime) {
                     if (!dayMap[dateStr]) dayMap[dateStr] = {};
-                    
                     const key = name;
                     if (!dayMap[dateStr][key]) {
                         dayMap[dateStr][key] = { handled:0, cash:0, online:0, pass:0, isLive, loginTime };
@@ -2824,21 +2997,47 @@
                     dayMap[dateStr][key].pass    += parseFloat(p || 0);
                 }
 
-                // BUG FIX: Live sessions have no logoutTime yet. Revenue should always
-                // land on TODAY's date (when the revenue is actually being collected),
-                // not on loginTime which could be from a previous month/day.
                 const todayStr = getLocalDateString(new Date());
                 const nowTs    = Date.now();
 
+                // Each transaction is final the instant it's written, keyed to the
+                // vehicle's own exit time — not the operator's shift boundary. This is
+                // what makes overnight shifts bucket correctly without special-casing,
+                // and it means "today" is always accurate without merging in-progress
+                // shift totals — no live-session ambiguity to resolve here at all.
+                const txCoveredDates = new Set();
+                txArray.forEach(tx => {
+                    if (!tx || !tx.time) return;
+                    const dateStr = getLocalDateString(new Date(tx.time));
+                    txCoveredDates.add(dateStr);
+                    const opName = (systemSettings.users[tx.exitOp] && systemSettings.users[tx.exitOp].name) || tx.exitOp || 'Unknown';
+                    const fee = parseFloat(tx.fee || 0);
+                    const c = tx.paymentMethod === 'CASH'   ? fee : 0;
+                    const o = tx.paymentMethod === 'ONLINE' ? fee : 0;
+                    const p = tx.paymentMethod === 'PASS'   ? fee : 0;
+                    addToDay(dateStr, opName, 1, c, o, p, dateStr === todayStr, null);
+                });
+
+                // ── Fallback path — only reached for dates transactions didn't cover ──
+                const seenLoginTimes = new Set();
+
                 liveSessionsArray.forEach(shift => {
                     if (!shift) return;
-                    if (nowTs < startTs || nowTs > endTs) return; // today not in selected range
-                    addToDay(todayStr, shift.name || 'Unknown', shift.handled, shift.cash, shift.online, shift.passUsage, true, shift.loginTime, shift.username);
+                    if (nowTs < startTs || nowTs > endTs) return;
+                    if (txCoveredDates.has(todayStr)) return; // today already covered by transactions
+                    const shiftKey = getShiftKey({ username: shift.username, loginTime: shift.loginTime });
+                    if (seenLoginTimes.has(shiftKey)) return;
+                    seenLoginTimes.add(shiftKey);
+                    addToDay(todayStr, shift.name || 'Unknown', shift.handled, shift.cash, shift.online, shift.passUsage, true, shift.loginTime);
                 });
 
                 if (currentShift && currentShift.active && currentShift.role !== 'tester') {
-                    if (nowTs >= startTs && nowTs <= endTs) {
-                        addToDay(todayStr, currentShift.name || 'Unknown', currentShift.handled, currentShift.cash, currentShift.online, currentShift.passUsage, true, currentShift.loginTime, currentShift.username);
+                    if (nowTs >= startTs && nowTs <= endTs && !txCoveredDates.has(todayStr)) {
+                        const shiftKey = getShiftKey({ username: currentShift.username, loginTime: currentShift.loginTime });
+                        if (!seenLoginTimes.has(shiftKey)) {
+                            seenLoginTimes.add(shiftKey);
+                            addToDay(todayStr, currentShift.name || 'Unknown', currentShift.handled, currentShift.cash, currentShift.online, currentShift.passUsage, true, currentShift.loginTime);
+                        }
                     }
                 }
 
@@ -2849,15 +3048,16 @@
                     const lo = shift.logoutTime || null;
                     const lt = shift.loginTime || lo;
                     if (!lt && !lo) return; // completely empty record, skip
-                    // Revenue day = logoutTime if it falls in range, else loginTime.
-                    // This correctly handles: same-day shifts, overnight shifts, and
-                    // month-boundary shifts (login=last day of prev month, logout=first day of this month).
                     const revenueTs = (lo && lo >= startTs && lo <= endTs) ? lo
                                     : (lt && lt >= startTs && lt <= endTs) ? lt
                                     : null;
                     if (!revenueTs) return; // shift has no timestamp inside selected range
                     const dateStr = getLocalDateString(new Date(revenueTs));
-                    addToDay(dateStr, shift.name || 'Unknown', shift.handled, shift.cash, shift.online, shift.passUsage, false, shift.loginTime, shift.username);
+                    if (txCoveredDates.has(dateStr)) return; // this date already has transaction-level data — don't double-count
+                    const shiftKey = getShiftKey({ username: shift.username, loginTime: shift.loginTime });
+                    if (seenLoginTimes.has(shiftKey)) return;
+                    seenLoginTimes.add(shiftKey);
+                    addToDay(dateStr, shift.name || 'Unknown', shift.handled, shift.cash, shift.online, shift.passUsage, false, shift.loginTime);
                 });
 
                 let totalHandled = 0, totalCash = 0, totalOnline = 0, totalPass = 0;
@@ -2962,9 +3162,11 @@
                 document.getElementById('rep-total').innerText   = (totalCash + totalOnline).toFixed(2);
 
                 const liveCount = liveSessionsArray.length + (currentShift && currentShift.active && currentShift.role !== 'tester' ? 1 : 0);
+                const fallbackDates = sortedDates.filter(d => !txCoveredDates.has(d));
                 document.getElementById('rep-source-label').innerHTML =
-                    `📡 Firebase నుండి తీసుకున్నది • ${historyArray.length} చారిత్రక షిఫ్టులు` +
-                    (liveCount > 0 ? ` + ${liveCount} లైవ్ సెషన్లు` : '');
+                    `📡 ${txArray.length} లావాదేవీలు (transactions)` +
+                    (liveCount > 0 ? ` + ${liveCount} లైవ్ సెషన్లు` : '') +
+                    (fallbackDates.length > 0 ? ` • ⚠️ ${fallbackDates.length} తేదీలకు పాత షిఫ్ట్ డేటా వాడబడింది (transactions లేవు)` : '');
                 statusEl.innerHTML = `✅ ${new Date().toLocaleTimeString('te-IN')} కు అప్‌డేట్ చేయబడింది`;
 
                 currentReportData = {
@@ -3452,8 +3654,8 @@
                     await db.ref('/shiftHistory').push({
                         name: currentShift.name || 'Operator',
                         username: currentShift.username || '',
-                        loginTime: currentShift.loginTime || Date.now(),
-                        logoutTime: Date.now(),
+                        loginTime: currentShift.loginTime || serverNow(),
+                        logoutTime: serverNow(),
                         handled: currentShift.handled || 0,
                         leftInLot: (() => { try { return (Array.isArray(spots) ? spots : Object.values(spots||{})).filter(s=>s&&s.isOccupied).length; } catch(e){return 0;} })(),
                         cash: c, online: o, passUsage: p,
